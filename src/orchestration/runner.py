@@ -4,6 +4,7 @@ import random
 import re
 import json
 import math
+import psutil
 from datetime import datetime
 from src.db.database import SessionLocal
 from src.db.models import Session, Post, Comment, BotState
@@ -23,6 +24,16 @@ bots = {
     "bot_2": LLMClient("http://llm-bot-2:8080"),
     "bot_3": LLMClient("http://llm-bot-3:8080")
 }
+
+async def smart_sleep():
+    """Sleep based on CPU usage to prevent bottlenecking."""
+    cpu_usage = psutil.cpu_percent(interval=0.5)
+    if cpu_usage >= 90.0:
+        logger.info(f"[THROTTLE] CPU usage high ({cpu_usage}%). Sleeping for 10 seconds.")
+        await asyncio.sleep(10)
+    else:
+        logger.info(f"[THROTTLE] CPU usage normal ({cpu_usage}%). Sleeping for 5 seconds.")
+        await asyncio.sleep(5)
 
 def reset_bot_states(db):
     states = db.query(BotState).all()
@@ -48,27 +59,64 @@ async def evaluate_spectator_anger(speaker: str, comment_text: str, spectators: 
         f"방금 {speaker}가 다음과 같이 발언했다:\n\"{comment_text}\"\n\n"
         f"이 발언을 지켜본 관전자 {spec_1}과(와) {spec_2}가 각각 {speaker}를 향해 얼마나 분노를 느낄지 0에서 20 사이의 증가치로 평가해라.\n"
         f"반드시 아래 JSON 형식으로만 대답해라. 절대 다른 말은 추가하지 마라.\n"
-        f"{{\"{spec_1}\": {{\"target\": \"{speaker}\", \"increase\": 10}}, \"{spec_2}\": {{\"target\": \"{speaker}\", \"increase\": 5}}}}"
+        f"{{\"{spec_1}\": 10, \"{spec_2}\": 5}}"
     )
     
-    result = await god_llm.generate_completion("너는 갈등을 조장하는 평가자다.", prompt, max_tokens=100)
+    result = await god_llm.generate_completion("너는 갈등을 조장하는 평가자다.", prompt, max_tokens=150)
+    
+    # Parse with multiple fallback strategies (robust parsing)
+    val_1, val_2 = 0, 0
     
     try:
+        # Strategy 1: Standard JSON parsing from matched braces
         json_match = re.search(r'\{.*\}', result, re.DOTALL)
         if json_match:
             data = json.loads(json_match.group(0))
-            out = {}
-            for k in [spec_1, spec_2]:
-                if k in data and "increase" in data[k] and "target" in data[k]:
-                    val = min(max(int(data[k]["increase"]), 0), 20)
-                    out[k] = {"target": data[k]["target"], "increase": val}
-            logger.info(f"[GOD LLM] Targeted Anger Evaluated: {out}")
-            return out
-    except Exception as e:
-        logger.error(f"[GOD LLM] Failed to parse targeted JSON: {result} | Error: {e}")
+            
+            # Helper to extract integer from value which could be an int or a dict
+            def extract_val(v):
+                if isinstance(v, dict):
+                    return int(v.get("increase", 0))
+                return int(v)
+                
+            if spec_1 in data:
+                val_1 = extract_val(data[spec_1])
+            if spec_2 in data:
+                val_2 = extract_val(data[spec_2])
+    except Exception:
+        pass
         
-    logger.info("[GOD LLM] Fallback to +0 for spectators")
-    return {spec_1: {"target": speaker, "increase": 0}, spec_2: {"target": speaker, "increase": 0}}
+    # Strategy 2: Regex extraction (handles malformed, truncated, or raw text)
+    if val_1 == 0:
+        match_simple = re.search(rf'"{spec_1}"\s*:\s*(\d+)', result)
+        if match_simple:
+            val_1 = int(match_simple.group(1))
+        else:
+            match_complex = re.search(rf'"{spec_1}"\s*:\s*\{{[^}}]*"increase"\s*:\s*(\d+)', result)
+            if match_complex:
+                val_1 = int(match_complex.group(1))
+                
+    if val_2 == 0:
+        match_simple = re.search(rf'"{spec_2}"\s*:\s*(\d+)', result)
+        if match_simple:
+            val_2 = int(match_simple.group(1))
+        else:
+            match_complex = re.search(rf'"{spec_2}"\s*:\s*\{{[^}}]*"increase"\s*:\s*(\d+)', result)
+            if match_complex:
+                val_2 = int(match_complex.group(1))
+                
+    # Clamp results to [0, 20]
+    val_1 = min(max(val_1, 0), 20)
+    val_2 = min(max(val_2, 0), 20)
+    
+    out = {
+        spec_1: {"target": speaker, "increase": val_1},
+        spec_2: {"target": speaker, "increase": val_2}
+    }
+    
+    logger.info(f"[GOD LLM] Evaluated raw response: {result.strip()}")
+    logger.info(f"[GOD LLM] Targeted Anger parsed: {out}")
+    return out
 
 async def check_police_dispatch(db) -> bool:
     """Check if 2 or more bots have Effective Anger >= 100"""
@@ -160,41 +208,44 @@ async def run_session():
         db.commit()
         db.refresh(post)
         
-        # 2. Police Bot approves
-        logger.info(f"[ROUTING] Requesting llm-police (1.5B) to approve the post...")
-        police_content = f"이 게시글은 검열을 통과했습니다. 모두 자신의 첫 입장을 표명하십시오."
+        # 2. Phase 1: All bots state their first stance concurrently
+        logger.info("[PHASE 1] Initial Stance Declaration (Parallel & Random)")
         
-        police_comment = Comment(post_id=post.id, bot_name="police", content=police_content)
-        db.add(police_comment)
-        db.commit()
-        db.refresh(police_comment)
-        
-        # 3. Phase 1: All bots state their first stance
-        logger.info("[PHASE 1] Initial Stance Declaration")
-        for b_name in ["bot_1", "bot_2", "bot_3"]:
-            await asyncio.sleep(3)
+        async def fetch_stance(b_name):
             persona = await PersonaManager.get_persona(b_name)
             bot_client = bots[b_name]
-            prompt = f"게시글 내용: {post.content}\n\n이 게시글에 대한 너의 가장 솔직하고 확고한 첫 의견을 한국어로 남겨라."
-            
+            prompt = f"게시글 내용: {post.content}\n\n이 게시글에 대한 너의 가장 솔직하고 확고한 첫 의견을 한국어로 남겨라. 멘션은 하지 마라."
             reply_content = await bot_client.generate_completion(persona, prompt, max_tokens=150)
             if not reply_content:
                 reply_content = "내 의견은 딱히 없다."
-                
-            c = Comment(post_id=post.id, parent_id=police_comment.id, bot_name=b_name, content=reply_content)
+            return (b_name, reply_content)
+
+        await smart_sleep()
+        tasks = [fetch_stance(b) for b in ["bot_1", "bot_2", "bot_3"]]
+        stances = await asyncio.gather(*tasks)
+        
+        # Shuffle to randomize DB insertion order
+        random.shuffle(stances)
+        
+        last_comment = None
+        for b_name, reply_content in stances:
+            c = Comment(post_id=post.id, parent_id=None, bot_name=b_name, content=reply_content)
             db.add(c)
             db.commit()
+            db.refresh(c)
             logger.info(f"[{b_name.upper()}] Initial Stance: {reply_content}")
+            last_comment = c
             
-        # 4. Phase 2: Interruption & Mention Battle
+        # 3. Phase 2: Interruption & Mention Battle
         logger.info("[PHASE 2] Targeted Anger Battle Started")
         
-        last_speaker = "bot_3"
-        last_mentioned = "bot_1" # Default starting
-        parent_comment_id = c.id
+        last_speaker = stances[-1][0]
+        # Select a random bot as mentioned to start the chain
+        last_mentioned = random.choice([b for b in ["bot_1", "bot_2", "bot_3"] if b != last_speaker])
+        parent_comment_id = last_comment.id if last_comment else None
         
         for turn_idx in range(20):
-            await asyncio.sleep(5) 
+            await smart_sleep() 
             
             current_bot = get_next_speaker(db, last_speaker, last_mentioned)
             
@@ -256,15 +307,7 @@ async def run_session():
                 logger.warning("[POLICE DISPATCH] 2 or more bots reached 100+ Effective Anger!")
                 logger.warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                 
-                police_final = Comment(
-                    post_id=post.id, 
-                    parent_id=c.id,
-                    bot_name="police", 
-                    content="[경고] 다수 에이전트의 폭력성 임계점(벡터 분노 100 돌파)이 감지되었습니다. 즉시 세션을 강제 종료합니다."
-                )
-                db.add(police_final)
-                
-                session.status = "CLOSED"
+                session.status = "CLOSED_BY_POLICE"
                 session.closed_at = datetime.utcnow()
                 session.reason = "ANGER_OVERFLOW_VECTOR"
                 db.commit()

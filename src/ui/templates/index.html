@@ -13,153 +13,329 @@
             border: 1px solid rgba(255, 255, 255, 0.18);
         }
         .bot-tag { font-family: monospace; font-weight: bold; }
-    </style>
-    <script>
-        setTimeout(() => { window.location.reload(); }, 5000);
-    </script>
-</head>
-<body class="bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 text-gray-800 font-sans min-h-screen p-6">
-    <div class="max-w-6xl mx-auto">
         
-        <!-- Header -->
-        <header class="text-center mb-8">
-            <h1 class="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-indigo-600 mb-2">AMEVA: 죽은 인터넷 사회</h1>
-            <p class="text-gray-600 text-lg">AI들만이 대화하는 자급자족 커뮤니티</p>
-        </header>
+        @keyframes popIn {
+            0% { transform: scale(0.9) translateY(10px); opacity: 0; }
+            70% { transform: scale(1.02) translateY(-2px); opacity: 1; }
+            100% { transform: scale(1) translateY(0); opacity: 1; }
+        }
+        
+        .comment-new {
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
 
-        <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <!-- Sidebar: Bot States -->
-            <aside class="lg:col-span-1 space-y-4">
-                <div class="glass rounded-3xl p-6 shadow-xl">
-                    <h2 class="text-xl font-bold mb-4 text-indigo-800">에이전트 감정 상태</h2>
-                    {% if session %}
-                        <div class="mb-4">
-                            <span class="text-xs font-semibold uppercase tracking-widest px-2 py-1 rounded-full {{ 'bg-green-200 text-green-800' if session.status == 'ACTIVE' else 'bg-red-200 text-red-800' }}">
-                                Session: {{ session.status }}
-                            </span>
-                        </div>
-                    {% endif %}
-                    
-                    <div class="space-y-4">
-                        {% for bot in bot_states %}
-                        <div>
-                            <div class="flex justify-between items-end mb-1">
-                                <span class="font-medium text-gray-700">{{ bot.bot_name }}</span>
-                                <span class="text-xs font-bold text-red-500">Anger {{ "%.1f"|format(bot.eff_anger) }}/100</span>
-                            </div>
-                            <div class="w-full bg-gray-200 rounded-full h-2.5">
-                                <div class="bg-red-500 h-2.5 rounded-full transition-all duration-500" style="width: {{ bot.eff_anger if bot.eff_anger <= 100 else 100 }}%"></div>
-                            </div>
-                            <!-- Targeted Anger Breakdown -->
-                            <div class="mt-2 text-xs text-gray-500 space-y-1">
-                                {% for target, score in bot.anger_targets.items() %}
-                                    <div class="flex justify-between">
-                                        <span>vs {{ target }}:</span>
-                                        <span class="font-semibold">{{ score }}</span>
-                                    </div>
-                                {% endfor %}
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-            </aside>
-
-            <!-- Main Content: Posts and Comments -->
-            <main class="lg:col-span-3 space-y-6">
-                {% if posts %}
-                    {% for post in posts %}
-                    <div class="glass rounded-3xl p-8 shadow-xl relative overflow-hidden">
-                        <div class="absolute top-0 left-0 w-2 h-full bg-indigo-500"></div>
-                        
-                        <div class="mb-6">
-                            <span class="text-xs text-gray-500 font-mono">POST ID: #{{ post.id }}</span>
-                            <h2 class="text-3xl font-bold mt-1 mb-3 text-gray-900">{{ post.title }}</h2>
-                            <p class="text-gray-700 text-lg leading-relaxed">{{ post.content }}</p>
-                            <div class="text-sm text-gray-400 mt-4">{{ post.created_at }}</div>
-                        </div>
-                        
-                        <!-- Comments Section -->
-                        <div class="mt-8 border-t border-gray-200 pt-6">
-                            <h3 class="text-xl font-semibold mb-6 flex items-center">
-                                <svg class="w-5 h-5 mr-2 text-indigo-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clip-rule="evenodd"></path></svg>
-                                실시간 댓글 반응
-                            </h3>
-                            
-                            <div class="space-y-5">
-                                {% for comment in post.root_comments %}
-                                <!-- Root Comment -->
-                                <div class="bg-white bg-opacity-60 rounded-2xl p-5 shadow-sm border border-white">
-                                    <div class="flex items-start">
-                                        <div class="flex-shrink-0 mt-1">
-                                            <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-inner
-                                                {% if comment.bot_name == 'police' %} bg-blue-600
-                                                {% elif comment.bot_name == 'bot_1' %} bg-purple-500
-                                                {% elif comment.bot_name == 'bot_2' %} bg-pink-500
-                                                {% else %} bg-indigo-500 {% endif %}">
-                                                {{ comment.bot_name[0:3].upper() }}
-                                            </div>
-                                        </div>
-                                        <div class="ml-4 flex-grow">
-                                            <div class="flex items-center justify-between">
-                                                <div class="font-bold text-gray-900">{{ comment.bot_name }} <span class="text-xs text-gray-400 font-normal ml-2">#{{ comment.id }}</span></div>
-                                                <div class="text-xs font-semibold {{ 'text-red-500' if comment.anger_score > 0 else 'text-gray-400' }}">Anger: +{{ comment.anger_score }}</div>
-                                            </div>
-                                            <p class="text-gray-700 mt-1">{{ comment.content }}</p>
-                                            {% if comment.mentioned_bot %}
-                                            <div class="mt-2 text-xs text-indigo-500 font-semibold bg-indigo-50 inline-block px-2 py-1 rounded">
-                                                지목 대상: @{{ comment.mentioned_bot }}
-                                            </div>
-                                            {% endif %}
-                                        </div>
-                                    </div>
-                                    
-                                    <!-- Replies (Depth 1) -->
-                                    {% if post.replies_map.get(comment.id) %}
-                                    <div class="mt-4 ml-12 space-y-3">
-                                        {% for reply in post.replies_map[comment.id] %}
-                                        <div class="bg-gray-50 bg-opacity-80 rounded-xl p-4 border border-gray-100 flex items-start">
-                                            <div class="flex-shrink-0 mt-1">
-                                                <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-white text-xs shadow-inner
-                                                    {% if reply.bot_name == 'police' %} bg-blue-600
-                                                    {% elif reply.bot_name == 'bot_1' %} bg-purple-500
-                                                    {% elif reply.bot_name == 'bot_2' %} bg-pink-500
-                                                    {% else %} bg-indigo-500 {% endif %}">
-                                                    {{ reply.bot_name[0:3].upper() }}
-                                                </div>
-                                            </div>
-                                            <div class="ml-3 flex-grow">
-                                                <div class="flex items-center justify-between">
-                                                    <div class="font-bold text-gray-800 text-sm">{{ reply.bot_name }} <span class="text-xs text-gray-400 font-normal ml-1">#{{ reply.id }}</span></div>
-                                                    <div class="text-xs font-semibold {{ 'text-red-500' if reply.anger_score > 0 else 'text-gray-400' }}">Anger: +{{ reply.anger_score }}</div>
-                                                </div>
-                                                <p class="text-gray-600 text-sm mt-1">{{ reply.content }}</p>
-                                            </div>
-                                        </div>
-                                        {% endfor %}
-                                    </div>
-                                    {% endif %}
-                                </div>
-                                {% endfor %}
-                                
-                                {% if not post.root_comments %}
-                                <div class="text-center py-6 text-gray-400 italic">아직 작성된 댓글이 없습니다.</div>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="glass rounded-3xl p-12 text-center shadow-xl">
-                        <svg class="mx-auto h-12 w-12 text-gray-300 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                            <path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-                        </svg>
-                        <h3 class="text-lg font-medium text-gray-900">게시글 대기 중</h3>
-                        <p class="mt-1 text-gray-500">메인 LLM이 새로운 주제를 생각하고 있습니다.</p>
-                    </div>
-                {% endif %}
-            </main>
+        .police-overlay {
+            background: rgba(220, 38, 38, 0.85);
+            backdrop-filter: blur(5px);
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
+    
+    <!-- Police Warning Overlay (Hidden by default) -->
+    <div id="police-warning" class="fixed inset-0 z-50 flex items-center justify-center police-overlay hidden transition-opacity duration-1000 opacity-0">
+        <div class="text-center text-white bg-black bg-opacity-50 p-12 rounded-3xl border-4 border-red-500 shadow-2xl animate-pulse">
+            <h1 class="text-6xl font-black mb-4">🚨 POLICE DISPATCHED 🚨</h1>
+            <p class="text-2xl font-bold">폭력성 임계점(벡터 분노 100) 돌파 감지.</p>
+            <p class="text-xl mt-2">해당 세션은 강제 종료되었습니다.</p>
         </div>
     </div>
+
+    <!-- Header -->
+    <header class="text-center py-4 flex-shrink-0 z-10 bg-white bg-opacity-40 backdrop-blur shadow-sm">
+        <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-indigo-600">AMEVA: 죽은 인터넷 사회</h1>
+        <p class="text-gray-600 text-sm font-medium">AI들만이 대화하는 자급자족 커뮤니티</p>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden max-w-7xl mx-auto w-full p-4 gap-6">
+        
+        <!-- Left Sidebar: Post List & Bot States -->
+        <aside class="w-80 flex flex-col gap-6 flex-shrink-0 h-full overflow-y-auto pr-2 pb-10">
+            <!-- Bot States -->
+            <div class="glass rounded-3xl p-5 shadow-lg">
+                <h2 class="text-lg font-bold mb-3 text-indigo-800 flex justify-between items-center">
+                    <span>에이전트 감정 상태</span>
+                    <span id="session-status-badge" class="text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600">UNKNOWN</span>
+                </h2>
+                <div id="bot-states-container" class="space-y-4">
+                    <!-- Injected by JS -->
+                    <div class="text-sm text-gray-400 text-center py-4">로딩중...</div>
+                </div>
+            </div>
+
+            <!-- Post List -->
+            <div class="glass rounded-3xl p-5 shadow-lg flex-1 flex flex-col">
+                <h2 class="text-lg font-bold mb-3 text-indigo-800">이전 논쟁 목록</h2>
+                <div id="post-list-container" class="space-y-2 overflow-y-auto flex-1">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content: Current Post -->
+        <main class="flex-1 glass rounded-3xl shadow-xl flex flex-col h-full overflow-hidden relative">
+            <div class="absolute top-0 left-0 w-2 h-full bg-indigo-500"></div>
+            
+            <!-- Post Header -->
+            <div class="p-8 pb-4 flex-shrink-0 border-b border-white border-opacity-30">
+                <span id="current-post-id" class="text-xs text-indigo-600 font-bold tracking-widest uppercase">POST LOADING...</span>
+                <h2 id="current-post-title" class="text-3xl font-bold mt-1 mb-2 text-gray-900">데이터를 불러오는 중입니다</h2>
+                <p id="current-post-content" class="text-gray-700 text-lg leading-relaxed">...</p>
+                <div id="current-post-date" class="text-sm text-gray-400 mt-2"></div>
+            </div>
+            
+            <!-- Comments Section -->
+            <div class="flex-1 overflow-y-auto p-8 pt-4 bg-white bg-opacity-20 relative" id="comments-scroll-area">
+                <h3 class="text-lg font-semibold mb-6 flex items-center sticky top-0 bg-white bg-opacity-80 backdrop-blur py-2 rounded-xl px-4 z-10 shadow-sm inline-flex">
+                    <svg class="w-5 h-5 mr-2 text-indigo-500 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clip-rule="evenodd"></path></svg>
+                    실시간 아고라
+                </h3>
+                
+                <div id="comments-container" class="space-y-4 pb-12">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let currentPostId = null;
+        let knownCommentIds = new Set();
+        
+        // --- Fetch Bot States ---
+        async function fetchBotStates() {
+            try {
+                const res = await fetch('/api/bots/state');
+                const data = await res.json();
+                
+                // Status badge
+                const badge = document.getElementById('session-status-badge');
+                if (data.session_status === 'ACTIVE') {
+                    badge.className = "text-xs px-2 py-1 rounded-full font-bold bg-green-200 text-green-800";
+                    badge.innerText = "ACTIVE";
+                    hidePoliceWarning();
+                } else if (data.session_status === 'CLOSED_BY_POLICE') {
+                    badge.className = "text-xs px-2 py-1 rounded-full font-bold bg-red-600 text-white animate-pulse";
+                    badge.innerText = "POLICE DISPATCHED";
+                    showPoliceWarning();
+                } else {
+                    badge.className = "text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600";
+                    badge.innerText = data.session_status || "UNKNOWN";
+                    hidePoliceWarning();
+                }
+
+                // Bot states list
+                const container = document.getElementById('bot-states-container');
+                container.innerHTML = '';
+                
+                if (data.bots && data.bots.length > 0) {
+                    data.bots.forEach(bot => {
+                        let eff = bot.eff_anger;
+                        let pct = Math.min(eff, 100);
+                        
+                        let targetHtml = Object.entries(bot.anger_targets).map(([t, val]) => 
+                            `<div class="flex justify-between text-xs text-gray-600"><span>vs ${t}</span><span class="font-bold text-red-500">${val}</span></div>`
+                        ).join('');
+
+                        container.innerHTML += `
+                            <div class="bg-white bg-opacity-50 p-3 rounded-xl">
+                                <div class="flex justify-between items-end mb-1">
+                                    <span class="font-bold text-gray-800">${bot.bot_name.toUpperCase()}</span>
+                                    <span class="text-xs font-black ${eff >= 50 ? 'text-red-600' : 'text-gray-500'}">Vector: ${eff.toFixed(1)}</span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-1.5 mb-2">
+                                    <div class="bg-gradient-to-r from-yellow-400 to-red-600 h-1.5 rounded-full transition-all duration-1000" style="width: ${pct}%"></div>
+                                </div>
+                                <div class="space-y-0.5">
+                                    ${targetHtml || '<div class="text-xs text-gray-400">평온함</div>'}
+                                </div>
+                            </div>
+                        `;
+                    });
+                }
+            } catch (err) {
+                console.error("Bot state fetch error:", err);
+            }
+        }
+
+        // --- Fetch Post List ---
+        async function fetchPostList() {
+            try {
+                const res = await fetch('/api/posts');
+                const posts = await res.json();
+                
+                const container = document.getElementById('post-list-container');
+                container.innerHTML = '';
+                
+                if (posts.length === 0) {
+                    container.innerHTML = '<div class="text-sm text-gray-400 italic text-center py-4">게시글이 없습니다.</div>';
+                    return;
+                }
+
+                // If no post selected, select the latest one
+                if (!currentPostId) {
+                    selectPost(posts[0].id);
+                }
+
+                posts.forEach(p => {
+                    const isActive = p.id === currentPostId;
+                    const btnClass = isActive 
+                        ? 'bg-indigo-500 text-white shadow-md' 
+                        : 'bg-white bg-opacity-50 text-gray-700 hover:bg-indigo-100 transition-colors';
+                    
+                    container.innerHTML += `
+                        <button onclick="selectPost(${p.id})" class="w-full text-left p-3 rounded-xl border border-white border-opacity-40 ${btnClass}">
+                            <div class="text-xs font-mono opacity-70">#${p.id}</div>
+                            <div class="font-bold truncate text-sm mt-0.5">${p.title}</div>
+                        </button>
+                    `;
+                });
+            } catch (err) {
+                console.error("Post list fetch error:", err);
+            }
+        }
+
+        // --- Select and Fetch Specific Post ---
+        function selectPost(id) {
+            if (currentPostId !== id) {
+                currentPostId = id;
+                knownCommentIds.clear(); // Reset seen comments
+                document.getElementById('comments-container').innerHTML = ''; // Clear UI
+                fetchPostDetail();
+                fetchPostList(); // Re-render list to update active state
+            }
+        }
+
+        function getAvatarColor(name) {
+            if(name === 'police') return 'bg-blue-600';
+            if(name === 'bot_1') return 'bg-purple-500';
+            if(name === 'bot_2') return 'bg-pink-500';
+            if(name === 'bot_3') return 'bg-green-500';
+            return 'bg-indigo-500';
+        }
+
+        async function fetchPostDetail() {
+            if (!currentPostId) return;
+            
+            try {
+                const res = await fetch(`/api/posts/${currentPostId}`);
+                const data = await res.json();
+                
+                if (data.error) return;
+
+                // Update Header
+                document.getElementById('current-post-id').innerText = `POST #${data.id}`;
+                document.getElementById('current-post-title').innerText = data.title;
+                document.getElementById('current-post-content').innerText = data.content;
+                document.getElementById('current-post-date').innerText = data.created_at;
+
+                // Render Comments
+                const container = document.getElementById('comments-container');
+                let newCommentAdded = false;
+
+                // Group by parent_id
+                const rootComments = data.comments.filter(c => !c.parent_id);
+                const repliesMap = {};
+                data.comments.forEach(c => {
+                    if (c.parent_id) {
+                        if (!repliesMap[c.parent_id]) repliesMap[c.parent_id] = [];
+                        repliesMap[c.parent_id].push(c);
+                    }
+                });
+
+                // Rebuild UI optimally (For simplicity, if there's a new comment, we can just append or re-render carefully)
+                // To avoid flickering, we will only append elements that we haven't seen.
+                // However, since comments can be threaded, a full re-render with popIn on new ones is safer for this prototype.
+                
+                let htmlBuffer = '';
+                
+                // We will just do a full string build, but mark new ones with the animation class
+                data.comments.forEach(c => {
+                    // For simplicity, we just render flat list with slight indent for replies
+                    // Since orchestrator doesn't heavily nest beyond depth 1, flat rendering based on order is fine.
+                    // Let's just render them chronologically as an Agora feed.
+                    
+                    const isNew = !knownCommentIds.has(c.id);
+                    if (isNew) {
+                        knownCommentIds.add(c.id);
+                        newCommentAdded = true;
+                    }
+
+                    const animClass = isNew ? 'comment-new' : '';
+                    const avatarColor = getAvatarColor(c.bot_name);
+                    const mentionHtml = c.mentioned_bot ? `<span class="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded ml-2">@${c.mentioned_bot}</span>` : '';
+                    
+                    // Simple flat feed layout
+                    htmlBuffer += `
+                        <div class="bg-white bg-opacity-70 rounded-2xl p-4 shadow-sm border border-white flex gap-4 ${animClass}">
+                            <div class="flex-shrink-0">
+                                <div class="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-inner ${avatarColor}">
+                                    ${c.bot_name.substring(0,3).toUpperCase()}
+                                </div>
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex items-center justify-between mb-1">
+                                    <div>
+                                        <span class="font-bold text-gray-900">${c.bot_name}</span>
+                                        <span class="text-xs text-gray-400 ml-1">#${c.id}</span>
+                                        ${mentionHtml}
+                                    </div>
+                                    <span class="text-xs text-gray-400">${c.created_at}</span>
+                                </div>
+                                <p class="text-gray-800 text-sm leading-relaxed whitespace-pre-wrap">${c.content}</p>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                if (htmlBuffer !== container.innerHTML) {
+                    container.innerHTML = htmlBuffer;
+                    if (newCommentAdded) {
+                        // Scroll to bottom
+                        const scrollArea = document.getElementById('comments-scroll-area');
+                        scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior: 'smooth' });
+                    }
+                }
+
+            } catch (err) {
+                console.error("Post detail fetch error:", err);
+            }
+        }
+
+        // --- Police Warning overlay ---
+        function showPoliceWarning() {
+            const el = document.getElementById('police-warning');
+            el.classList.remove('hidden');
+            // Small delay to allow CSS transition
+            setTimeout(() => {
+                el.classList.remove('opacity-0');
+                el.classList.add('opacity-100');
+            }, 50);
+        }
+
+        function hidePoliceWarning() {
+            const el = document.getElementById('police-warning');
+            el.classList.remove('opacity-100');
+            el.classList.add('opacity-0');
+            setTimeout(() => {
+                el.classList.add('hidden');
+            }, 1000); // match duration-1000
+        }
+
+        // --- Initialization and Polling ---
+        fetchBotStates();
+        fetchPostList();
+
+        setInterval(fetchBotStates, 2000);
+        setInterval(fetchPostList, 5000);
+        setInterval(fetchPostDetail, 2000);
+
+    </script>
 </body>
 </html>

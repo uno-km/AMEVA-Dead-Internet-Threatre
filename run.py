@@ -30,55 +30,82 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="AMEVA-DeadInternetSociety", lifespan=lifespan)
 
 @app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request, db: DbSession = Depends(get_db)):
+async def read_root(request: Request):
     """
-    메인 게시판 UI 렌더링
+    메인 게시판 UI 렌더링 (SPA)
     """
-    # Fetch the most recent active session's post, or the latest post
-    latest_session = db.query(Session).order_by(Session.id.desc()).first()
-    posts_data = []
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={}
+    )
+
+@app.get("/api/posts")
+async def get_posts(db: DbSession = Depends(get_db)):
+    posts = db.query(Post).order_by(Post.id.desc()).all()
+    return [{"id": p.id, "title": p.title, "created_at": p.created_at.strftime("%Y-%m-%d %H:%M:%S")} for p in posts]
+
+@app.get("/api/posts/{post_id}")
+async def get_post_detail(post_id: int, db: DbSession = Depends(get_db)):
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        return {"error": "Post not found"}
+        
+    session_status = "UNKNOWN"
+    session_obj = db.query(Session).filter(Session.id == post.session_id).first()
+    if session_obj:
+        session_status = session_obj.status
+
+    comments = db.query(Comment).filter(Comment.post_id == post.id).order_by(Comment.created_at.asc()).all()
     
-    if latest_session:
-        post = db.query(Post).filter(Post.session_id == latest_session.id).first()
-        if post:
-            # comments where parent_id is Null (root comments)
-            root_comments = db.query(Comment).filter(Comment.post_id == post.id, Comment.parent_id == None).order_by(Comment.created_at.asc()).all()
-            
-            # Fetch all child comments and map them
-            all_comments = db.query(Comment).filter(Comment.post_id == post.id, Comment.parent_id != None).order_by(Comment.created_at.asc()).all()
-            replies_map = {}
-            for c in all_comments:
-                if c.parent_id not in replies_map:
-                    replies_map[c.parent_id] = []
-                replies_map[c.parent_id].append(c)
+    comments_data = []
+    for c in comments:
+        comments_data.append({
+            "id": c.id,
+            "parent_id": c.parent_id,
+            "bot_name": c.bot_name,
+            "content": c.content,
+            "anger_score": c.anger_score,
+            "mentioned_bot": c.mentioned_bot,
+            "created_at": c.created_at.strftime("%H:%M:%S")
+        })
+        
+    return {
+        "id": post.id,
+        "title": post.title,
+        "content": post.content,
+        "session_status": session_status,
+        "created_at": post.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        "comments": comments_data
+    }
 
-            posts_data.append({
-                "id": post.id,
-                "title": post.title,
-                "content": post.content,
-                "created_at": post.created_at.strftime("%Y-%m-%d %H:%M:%S"),
-                "session_status": latest_session.status,
-                "root_comments": root_comments,
-                "replies_map": replies_map
-            })
-
+@app.get("/api/bots/state")
+async def get_bot_states(db: DbSession = Depends(get_db)):
     import json
     from src.orchestration.runner import calculate_effective_anger
+    
     bot_states_db = db.query(BotState).all()
     bot_states = []
+    
+    # Get latest active session for status
+    latest_session = db.query(Session).order_by(Session.id.desc()).first()
+    session_status = latest_session.status if latest_session else "UNKNOWN"
+    
     for b in bot_states_db:
-        anger_dict = json.loads(b.anger_targets)
+        try:
+            anger_dict = json.loads(b.anger_targets) if b.anger_targets else {}
+        except:
+            anger_dict = {}
         eff = calculate_effective_anger(anger_dict)
         bot_states.append({
             "bot_name": b.bot_name,
             "anger_targets": anger_dict,
             "eff_anger": eff
         })
-    
-    return templates.TemplateResponse(
-        "index.html", 
-        {"request": request, "posts": posts_data, "bot_states": bot_states, "session": latest_session}
-    )
+    return {
+        "session_status": session_status,
+        "bots": bot_states
+    }
 
 if __name__ == "__main__":
     import uvicorn

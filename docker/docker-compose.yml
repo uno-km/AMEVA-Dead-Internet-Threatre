@@ -65,7 +65,7 @@ services:
       - "8105:8080"
     volumes:
       - C:/ameva/models:/models
-    command: -m /models/qwen1_5-1_8b-chat-q4_k_m.gguf -c 2048 --host 0.0.0.0 --port 8080
+    command: -m /models/llama3.2-1b.gguf -c 2048 --host 0.0.0.0 --port 8080
     restart: unless-stopped
 
   llm-police:
