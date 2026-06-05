@@ -15,6 +15,177 @@ Session 15에서 0.5B 소형 모델들의 전형적인 **'대본(Script) 환각 
 *Post 15를 찾을 수 없습니다.*
 
 ## 3. Full Codebase
+### Database Schema
+```sql
+CREATE TABLE sessions (
+	id INTEGER NOT NULL, 
+	status VARCHAR, 
+	reason VARCHAR, 
+	created_at DATETIME, 
+	closed_at DATETIME, 
+	PRIMARY KEY (id)
+);
+
+CREATE TABLE bot_states (
+	id INTEGER NOT NULL, 
+	bot_name VARCHAR, 
+	persona VARCHAR, 
+	anger_targets VARCHAR, 
+	created_at DATETIME, current_directive VARCHAR, 
+	PRIMARY KEY (id)
+);
+
+CREATE TABLE posts (
+	id INTEGER NOT NULL, 
+	session_id INTEGER, 
+	title VARCHAR, 
+	content TEXT, 
+	created_at DATETIME, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(session_id) REFERENCES sessions (id)
+);
+
+CREATE TABLE comments (
+	id INTEGER NOT NULL, 
+	post_id INTEGER, 
+	parent_id INTEGER, 
+	bot_name VARCHAR, 
+	content TEXT, 
+	anger_score INTEGER, 
+	mentioned_bot VARCHAR, 
+	created_at DATETIME, 
+	PRIMARY KEY (id), 
+	FOREIGN KEY(post_id) REFERENCES posts (id), 
+	FOREIGN KEY(parent_id) REFERENCES comments (id)
+);
+
+CREATE TABLE session_bot_states (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id INTEGER, turn_index INTEGER, bot_name VARCHAR, persona VARCHAR, current_directive VARCHAR, anger_targets VARCHAR, created_at DATETIME, FOREIGN KEY(session_id) REFERENCES sessions(id));
+
+CREATE TABLE sqlite_sequence(name,seq);
+
+```
+
+### File: `docker/docker-compose.yml`
+```yaml
+version: '3.8'
+
+services:
+  web-app:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: ameva-web-app
+    ports:
+      - "8050:8050"
+    volumes:
+      - ../:/AMEVA-DeadInternetSociety
+      - ../data:/AMEVA-DeadInternetSociety/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8050
+      - DATABASE_URL=sqlite:////AMEVA-DeadInternetSociety/ameva_society.db
+      - PYTHONPATH=/AMEVA-DeadInternetSociety
+    depends_on:
+      - llm-main
+      - llm-bot-1
+      - llm-bot-2
+      - llm-bot-3
+      - llm-god
+    networks:
+      - ameva_net
+    restart: always
+
+  llm-main:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: ameva-llm-main
+    ports:
+      - "8101:8080"
+    volumes:
+      - ../../models:/models
+    command: -m /models/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf -c 4096 --host 0.0.0.0 --port 8080
+    networks:
+      - ameva_net
+    restart: no
+
+  llm-bot-1:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: ameva-llm-bot-1
+    ports:
+      - "8102:8080"
+    volumes:
+      - ../../models:/models
+    command: -m /models/qwen2.5-0.5b.gguf -c 2048 --host 0.0.0.0 --port 8080
+    networks:
+      - ameva_net
+    restart: no
+
+  llm-bot-2:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: ameva-llm-bot-2
+    ports:
+      - "8103:8080"
+    volumes:
+      - ../../models:/models
+    command: -m /models/qwen2.5-0.5b.gguf -c 2048 --host 0.0.0.0 --port 8080
+    networks:
+      - ameva_net
+    restart: no
+
+  llm-bot-3:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: ameva-llm-bot-3
+    ports:
+      - "8104:8080"
+    volumes:
+      - ../../models:/models
+    command: -m /models/qwen2.5-0.5b.gguf -c 2048 --host 0.0.0.0 --port 8080
+    networks:
+      - ameva_net
+    restart: no
+
+  llm-god:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: ameva-llm-god
+    ports:
+      - "8105:8080"
+    volumes:
+      - ../../models:/models
+    command: -m /models/llama3.2-1b.gguf -c 2048 --host 0.0.0.0 --port 8080
+    networks:
+      - ameva_net
+    restart: no
+
+#  llm-police:
+#    image: ghcr.io/ggml-org/llama.cpp:server
+#    container_name: ameva-llm-police
+#    ports:
+#      - "8106:8080"
+#    volumes:
+#      - ../../models:/models
+#    command: -m /models/llama3.2-1b.gguf -c 2048 --host 0.0.0.0 --port 8080
+#    networks:
+#      - ameva_net
+#    restart: no
+
+  dozzle:
+    container_name: dozzle
+    image: amir20/dozzle:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "8888:8080"
+    networks:
+      - ameva_net
+    restart: always
+
+# 커스텀 브리지 네트워크를 통한 컨테이너 간 통신 최적화
+networks:
+  ameva_net:
+    driver: bridge
+
+```
+
 ### File: `run.py`
 ```python
 import asyncio
@@ -118,12 +289,34 @@ async def get_bot_states(db: DbSession = Depends(get_db)):
             "persona": b.persona,
             "current_directive": b.current_directive,
             "anger_targets": anger_dict,
-            "eff_anger": eff
+            "effective_anger": eff
         })
-    return {
-        "session_status": session_status,
-        "bots": bot_states
-    }
+        
+    return {"states": bot_states, "session_status": session_status}
+
+@app.get("/api/lpde/state")
+async def get_lpde_states(db: DbSession = Depends(get_db)):
+    import json
+    from src.db.models import CurrentAgentState
+    
+    lpde_states = db.query(CurrentAgentState).all()
+    results = []
+    for s in lpde_states:
+        def safe_load(val):
+            try:
+                return json.loads(val) if val else []
+            except:
+                return []
+                
+        results.append({
+            "session_id": s.session_id,
+            "bot_name": s.bot_name,
+            "affect": safe_load(s.affect_json),
+            "opinion": safe_load(s.opinion_json),
+            "power": safe_load(s.power_json),
+            "updated_at": s.updated_at.strftime("%Y-%m-%d %H:%M:%S") if s.updated_at else None
+        })
+    return {"lpde_states": results}
 
 @app.get("/api/system/status")
 async def get_system_status():
@@ -534,6 +727,163 @@ class PersonaManager:
 
 ```
 
+### File: `src/core/personality_engine.py`
+```python
+import json
+import math
+import logging
+from typing import Dict, List, Any
+from sqlalchemy.orm import Session
+from datetime import datetime
+
+from src.db.models import CurrentAgentState, AgentStateSnapshot, EdgeState
+
+logger = logging.getLogger("LPDE")
+
+class PersonalityEngine:
+    """
+    Layered Personality Dynamics Engine (LPDE)
+    Week 1A MVP: 
+    - Shadow Mode (상태만 계산/저장하고 실제 프롬프트에 즉각적인 구조 개편은 유보)
+    - 기저 성격(Traits)은 상수로, Affect(2D), Opinion(4D), Power(2D)만 업데이트
+    """
+    def __init__(self):
+        # MVP용 기본 가중치 (추후 학습 또는 정교한 BFI-2 매핑으로 대체)
+        self.clip_min = -1.0
+        self.clip_max = 1.0
+
+    def _clip(self, val: float) -> float:
+        return max(self.clip_min, min(self.clip_max, val))
+
+    def _sigmoid_bound(self, val: float) -> float:
+        """비선형 활성화: 폭주를 막기 위해 tanh(val) 사용"""
+        return math.tanh(val)
+
+    def load_agent_state(self, db: Session, session_id: int, bot_name: str) -> CurrentAgentState:
+        """기존 DB에서 로드, 없으면 새로 생성"""
+        state = db.query(CurrentAgentState).filter(
+            CurrentAgentState.session_id == session_id,
+            CurrentAgentState.bot_name == bot_name
+        ).first()
+        if not state:
+            state = CurrentAgentState(
+                session_id=session_id,
+                bot_name=bot_name,
+                traits_json=json.dumps([0.0] * 22),
+                states_json=json.dumps([0.0] * 10),
+                affect_json=json.dumps([0.0, 0.0]), # [Valence, Arousal]
+                opinion_json=json.dumps([0.0, 0.0, 0.0, 0.0]), # [Stance, Gap, Moral]
+                power_json=json.dumps([0.0, 0.0]), # [SelfAppraisal, SystemicInfluence]
+                residual_json=json.dumps([0.0] * 16)
+            )
+            db.add(state)
+            db.commit()
+            db.refresh(state)
+        return state
+
+    def update_fast_state(self, db: Session, session_id: int, bot_name: str, turn_index: int):
+        """
+        턴이 끝날 때마다 호출되어 상태 공간을 업데이트합니다.
+        (현재는 난수 또는 단순 decay 기반의 MVP 로직이며, Week 1B의 Event 추출기가 완성되면 Edge 기반 업데이트 추가)
+        """
+        agent = self.load_agent_state(db, session_id, bot_name)
+        
+        # Parse current states
+        affect = json.loads(agent.affect_json)
+        opinion = json.loads(agent.opinion_json)
+        power = json.loads(agent.power_json)
+
+        # [MVP Logic] 
+        # 임시로 자연스러운 Decay (0으로 회귀) 및 소규모 변동성 부여
+        # Affect: Arousal은 약간씩 가라앉고, Valence는 중립으로 회귀
+        new_affect = [
+            self._clip(self._sigmoid_bound(affect[0] * 0.9)), # Valence decay
+            self._clip(self._sigmoid_bound(affect[1] * 0.95)) # Arousal decay
+        ]
+
+        # Opinion: 자신의 입장을 고수하려는 관성(Inertia)
+        new_opinion = [self._clip(o * 0.98) for o in opinion]
+
+        # Power: 서서히 변동
+        new_power = [self._clip(p * 0.99) for p in power]
+
+        # 상태 업데이트
+        agent.affect_json = json.dumps(new_affect)
+        agent.opinion_json = json.dumps(new_opinion)
+        agent.power_json = json.dumps(new_power)
+        db.commit()
+
+        # 스냅샷 저장
+        self.snapshot(db, session_id, turn_index, agent)
+
+        logger.info(f"[LPDE] Updated Shadow State for {bot_name}: Affect={new_affect}")
+
+    def snapshot(self, db: Session, session_id: int, turn_index: int, agent: CurrentAgentState):
+        """턴이 종료될 때 스냅샷 테이블에 기록"""
+        snap = AgentStateSnapshot(
+            session_id=session_id,
+            turn_index=turn_index,
+            bot_name=agent.bot_name,
+            traits_json=agent.traits_json,
+            states_json=agent.states_json,
+            affect_json=agent.affect_json,
+            memory_json=agent.memory_json,
+            opinion_json=agent.opinion_json,
+            power_json=agent.power_json,
+            residual_json=agent.residual_json
+        )
+        db.add(snap)
+        db.commit()
+
+personality_engine = PersonalityEngine()
+
+```
+
+### File: `src/core/prompt_adapter.py`
+```python
+import logging
+from typing import List
+from src.db.models import Comment
+
+logger = logging.getLogger("PromptAdapter")
+
+class PromptAdapter:
+    """
+    LLM이 이전 대화를 '대본(Script)'으로 착각하고 다른 봇의 발화를 이어쓰는 
+    할루시네이션(Hallucination)을 막기 위해, 대화 기록을 메타데이터 형태로 구조화합니다.
+    """
+    def __init__(self):
+        pass
+
+    def build_structured_history(self, items: List[dict]) -> str:
+        """
+        기존 "bot_1: 텍스트" 형식을 탈피하고 구조화된 로그 형태로 변환합니다.
+        items는 {"bot_name": ..., "message": ...} 형태의 딕셔너리 리스트입니다.
+        """
+        if not items:
+            return "No previous conversation."
+
+        structured_lines = ["[Conversation History]"]
+        for item in items:
+            bot_name = item.get("bot_name", "Unknown")
+            msg = item.get("message", "").strip()
+            # 봇 이름이나 사람 이름을 명확히 분리하고, message를 데이터 필드로 취급
+            line = f"- speaker={bot_name} | message=\"{msg}\""
+            structured_lines.append(line)
+        
+        return "\n".join(structured_lines)
+
+    def build_prompt(self, agent_state, history: str, target_bot: str) -> str:
+        """
+        Week 1B에서 적용될 전체 프롬프트 빌더. 
+        (1A에서는 Shadow Mode이므로 사용하지 않음)
+        """
+        pass
+
+prompt_adapter = PromptAdapter()
+
+```
+
 ### File: `src/db/database.py`
 ```python
 import os
@@ -665,6 +1015,59 @@ class SessionBotState(Base):
     created_at = Column(DateTime, default=datetime.now)
 
     session = relationship("Session", backref="bot_states")
+
+class CurrentAgentState(Base):
+    """현재 LPDE 에이전트 상태 (Shadow Mode)"""
+    __tablename__ = 'current_agent_states'
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey('sessions.id'), index=True)
+    bot_name = Column(String, index=True)
+    traits_json = Column(Text, default="[]")
+    states_json = Column(Text, default="[]")
+    affect_json = Column(Text, default="[]")
+    memory_json = Column(Text, default="[]")
+    opinion_json = Column(Text, default="[]")
+    power_json = Column(Text, default="[]")
+    residual_json = Column(Text, default="[]")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+class AgentStateSnapshot(Base):
+    """턴 단위 LPDE 에이전트 상태 로깅"""
+    __tablename__ = 'agent_state_snapshots'
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey('sessions.id'), index=True)
+    turn_index = Column(Integer, index=True)
+    bot_name = Column(String, index=True)
+    traits_json = Column(Text, default="[]")
+    states_json = Column(Text, default="[]")
+    affect_json = Column(Text, default="[]")
+    memory_json = Column(Text, default="[]")
+    opinion_json = Column(Text, default="[]")
+    power_json = Column(Text, default="[]")
+    residual_json = Column(Text, default="[]")
+    created_at = Column(DateTime, default=datetime.now)
+
+class EdgeState(Base):
+    """방향성 있는 에이전트 간 관계 텐서"""
+    __tablename__ = 'edge_states'
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey('sessions.id'), index=True)
+    source_bot = Column(String, index=True)
+    target_bot = Column(String, index=True)
+    relation_json = Column(Text, default="{}")
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+class InterventionLog(Base):
+    """God LLM 개입 로그"""
+    __tablename__ = 'intervention_logs'
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey('sessions.id'), index=True)
+    turn_index = Column(Integer, index=True)
+    target_bot = Column(String, index=True)
+    kind = Column(String)
+    delta_json = Column(Text, default="{}")
+    reason = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
 
 ```
 
@@ -827,6 +1230,29 @@ async def llm_lifecycle(container_name: str, port: int, timeout: int = 120):
     finally:
         docker_stop(container_name)
 
+@asynccontextmanager
+async def multi_llm_lifecycle(targets, timeout: int = 120):
+    """
+    여러 컨테이너를 한 번에 시작하고, 블록 종료 시 모두 정리한다.
+    targets = [("ameva-llm-bot-1", 8102), ...]
+    """
+    started = []
+    try:
+        for container_name, port in targets:
+            docker_start(container_name)
+            started.append((container_name, port))
+
+        for container_name, port in started:
+            ready_url = f"http://localhost:{port}/health"
+            ready = await wait_for_http_ready(ready_url, timeout=timeout, interval=2)
+            if not ready:
+                logger.warning(f"[LIFECYCLE] {container_name} 가 제한시간 내 준비되지 않았습니다.")
+
+        yield True
+    finally:
+        for container_name, _ in reversed(started):
+            docker_stop(container_name)
+
 async def smart_sleep():
     """Sleep based on CPU usage to prevent bottlenecking."""
     if state_manager.state == SystemState.STOPPING:
@@ -855,6 +1281,16 @@ def reset_bot_states(db):
     states = db.query(BotState).all()
     for s in states:
         s.anger_targets = "{}"
+    db.commit()
+
+async def sync_personas_to_db(db):
+    persona_map = await PersonaManager.get_all_personas()
+    for bot_name, persona in persona_map.items():
+        row = db.query(BotState).filter(BotState.bot_name == bot_name).first()
+        if not row:
+            row = BotState(bot_name=bot_name, anger_targets="{}")
+            db.add(row)
+        row.persona = persona
     db.commit()
 
 def calculate_effective_anger(anger_dict: dict) -> float:
@@ -1321,10 +1757,6 @@ def normalize_post_content(text: str) -> str:
         # 너무 메타스러운 머리말 제거 (선택적)
         text = re.sub(r'^\s*게시글 내용\s*[:：]\s*', '', text)
 
-        # 너무 길면 잘라서 프롬프트 오염 방지
-        if len(text) > 500:
-            text = text[:500].rstrip()
-
         return text
 
     except Exception as e:
@@ -1351,7 +1783,18 @@ async def create_post_with_main_llm(db, session):
 
     post_content = normalize_post_content(post_content)
 
-    if not post_content:
+    title = "새로운 논쟁 거리"
+    if post_content:
+        # Extract title if the LLM output something like **Title:** ...
+        title_match = re.search(r'\*\*Title:\*\*\s*([^\n]+)', post_content, re.IGNORECASE)
+        if title_match:
+            title = title_match.group(1).strip()
+            # Remove the title line from content
+            post_content = re.sub(r'\*\*Title:\*\*\s*[^\n]+\n?', '', post_content, flags=re.IGNORECASE).strip()
+        
+        # Remove "Posted by: ..." if present
+        post_content = re.sub(r'\*\*Posted by:\*\*\s*[^\n]+\n?', '', post_content, flags=re.IGNORECASE).strip()
+    else:
         fallback_topics = [
             "Is it really a good thing that AI is replacing human jobs?",
             "Do you agree that the younger generation has no manners these days?",
@@ -1364,12 +1807,12 @@ async def create_post_with_main_llm(db, session):
         ]
         post_content = random.choice(fallback_topics)
 
-    post = Post(session_id=session.id, title="새로운 논쟁 거리", content=post_content)
+    post = Post(session_id=session.id, title=title, content=post_content)
     db.add(post)
     db.commit()
     db.refresh(post)
 
-    logger.info(f"[POST] Created post id={post.id}")
+    logger.info(f"[POST] Created post id={post.id} with title={title}")
     return post
 
 
@@ -1382,6 +1825,7 @@ async def run_session():
 
         reset_bot_states(db)
         await PersonaManager.assign_random_personas()
+        await sync_personas_to_db(db)
 
         session = Session(status="ACTIVE")
         db.add(session)
@@ -1392,12 +1836,19 @@ async def run_session():
         post = await create_post_with_main_llm(db, session)
         await state_manager.wait_at_checkpoint(Checkpoint.TOPIC_GEN_DONE)
 
-        # 신 LLM은 정치인 LLM 종료 직후부터 아고라(초기 의견 + 릴레이) 내내 상시 켜둠
+        # 신 LLM 및 봇들을 아고라(초기 의견 + 릴레이) 내내 상시 켜둠
+        bot_targets = [
+            ("ameva-llm-bot-1", 8102),
+            ("ameva-llm-bot-2", 8103),
+            ("ameva-llm-bot-3", 8104),
+        ]
+        
         async with llm_lifecycle("ameva-llm-god", 8105):
-            stances, last_comment, last_speaker = await create_initial_stances(db, post)
-            await state_manager.wait_at_checkpoint(Checkpoint.PHASE1_DONE)
+            async with multi_llm_lifecycle(bot_targets):
+                stances, last_comment, last_speaker = await create_initial_stances(db, post)
+                await state_manager.wait_at_checkpoint(Checkpoint.PHASE1_DONE)
 
-            await run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=0)
+                await run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=0)
 
         logger.info("[ORCHESTRATOR] [SESSION END] Completed relay phase.")
         state_manager.set_state(SystemState.IDLE)
@@ -1433,13 +1884,11 @@ async def create_initial_stances(db, post):
                 f"Instruction: State your position on the above post clearly and concisely in 1-2 sentences. Reply in English.\n"
             )
 
-            port_map = {"bot_1": 8102, "bot_2": 8103, "bot_3": 8104}
-            async with llm_lifecycle(f"ameva-llm-{b_name.replace('_', '-')}", port_map[b_name]):
-                reply_content = await bot_client.generate_completion(
-                    persona,
-                    prompt,
-                    max_tokens=120
-                )
+            reply_content = await bot_client.generate_completion(
+                persona,
+                prompt,
+                max_tokens=120
+            )
 
             reply_content = sanitize_generated_reply(reply_content)
 
@@ -1484,7 +1933,7 @@ async def create_initial_stances(db, post):
 
     return stances, last_comment, last_speaker
 
-def build_turn_context(db, post, current_bot):
+def build_turn_context(db, post, current_bot, use_structured=False):
     bot_state = get_or_create_bot_state(db, current_bot)
 
     anger_dict = safe_json_loads(bot_state.anger_targets, {})
@@ -1509,11 +1958,26 @@ def build_turn_context(db, post, current_bot):
         .all()
     )
 
-    recent_history = "\n".join([
-        f"{item.bot_name}: {sanitize_generated_reply(item.content)}"
-        for item in reversed(recent_c)
-        if item and item.content
-    ]).strip()
+    def _format_recent_history(items):
+        valid_items = []
+        for item in reversed(items):
+            if not item or not item.content:
+                continue
+            msg = sanitize_generated_reply(item.content)
+            if not msg:
+                continue
+            valid_items.append({"bot_name": item.bot_name, "message": msg})
+
+        if use_structured:
+            from src.core.prompt_adapter import prompt_adapter
+            return prompt_adapter.build_structured_history(valid_items)
+        else:
+            lines = []
+            for item in valid_items:
+                lines.append(f"{item['bot_name']}: {item['message']}")
+            return "\n".join(lines).strip()
+
+    recent_history = _format_recent_history(recent_c)
 
     if len(recent_history) > 600:
         recent_history = recent_history[-600:]
@@ -1521,28 +1985,62 @@ def build_turn_context(db, post, current_bot):
     return safe_anger_dict, eff_anger, emotion_directive, recent_history
 
 
-async def generate_relay_reply(db, post, current_bot):
+async def generate_relay_reply(db, post, current_bot, turn_idx=0):
+    import os
     persona = await PersonaManager.get_persona(current_bot)
     bot_client = bots[current_bot]
 
-    safe_anger_dict, eff_anger, emotion_directive, recent_history = build_turn_context(db, post, current_bot)
+    # [LPDE Feature Flags]
+    LPDE_STRUCTURED_HISTORY = os.getenv("LPDE_STRUCTURED_HISTORY", "true").lower() == "true"
+    LPDE_FULL_PROMPT = os.getenv("LPDE_FULL_PROMPT", "false").lower() == "true"
+
+    # [LPDE Phase 1A] Shadow Mode Update
+    from src.core.personality_engine import personality_engine
+    personality_engine.update_fast_state(db, post.session_id, current_bot, turn_index=turn_idx)
+
+    safe_anger_dict, eff_anger, emotion_directive, recent_history = build_turn_context(
+        db, post, current_bot, use_structured=LPDE_STRUCTURED_HISTORY
+    )
     god_directive = await generate_director_directive(db, current_bot, recent_history, eff_anger)
 
-    prompt = (
-        f"Post Content: {post.content}\n\n"
-        f"Recent Conversation:\n{recent_history if recent_history else 'No recent conversation'}\n\n"
-        f"Instruction: State your opinion by either refuting or agreeing with the recent conversation in 1-2 sentences. Reply in English.\n"
-        f"DO NOT write a chat script. DO NOT use 'bot_x:' prefixes. Just output your own statement directly.\n"
-        f"You MUST mention exactly one of '@bot_1', '@bot_2', or '@bot_3' at the end of your message (do NOT mention yourself).\n"
-    )
-    if emotion_directive:
-        prompt += f"\nEmotional State: {emotion_directive}\n"
+    if LPDE_FULL_PROMPT:
+        # Phase 1B: 추후 PromptAdapter를 활용해 완전히 구조화된 LPDE 프롬프트 생성
+        prompt = (
+            f"Post Content: {post.content}\n\n"
+            f"{recent_history if recent_history else 'No recent conversation'}\n\n"
+            f"[System] You are {current_bot}. Respond to the above conversation based on your internal LPDE state.\n"
+        )
+    else:
+        # Phase 1A: 기존 프롬프트 구조 유지 (Shadow Mode)
+        prompt = (
+            f"Post Content: {post.content}\n\n"
+            f"Recent Conversation:\n{recent_history if recent_history else 'No recent conversation'}\n\n"
+            f"Current Speaker: {current_bot}\n"
+            f"Instruction: You are {current_bot}. "
+            f"Respond ONLY as {current_bot} in 1-2 sentences in English.\n"
+            f"Do NOT write dialogue for other bots. "
+            f"Do NOT write a chat script. "
+            f"Do NOT use 'bot_x:' prefixes. "
+            f"Output only your own final message.\n"
+            f"You MUST mention exactly one of '@bot_1', '@bot_2', or '@bot_3' at the end of your message (do NOT mention yourself).\n"
+        )
+
+        if god_directive:
+            prompt += f"\nDirector Hint: {god_directive}\n"
+
+        if emotion_directive:
+            prompt += f"\nEmotional State: {emotion_directive}\n"
 
     reply_content = await bot_client.generate_completion(
         persona, 
         prompt, 
         max_tokens=150, 
-        stop=["\n\n", "bot_1:", "bot_2:", "bot_3:", "Bot_1:", "Bot_2:", "Bot_3:"]
+        stop=[
+            "\n\n",
+            "\nbot_1:", "\nbot_2:", "\nbot_3:",
+            "\nBot_1:", "\nBot_2:", "\nBot_3:",
+            "\nspeaker=", "\nSpeaker="
+        ]
     )
     reply_content = sanitize_generated_reply(reply_content)
 
@@ -1679,9 +2177,7 @@ async def run_relay_phase(db, session, post, last_comment, last_speaker, start_t
                 current_bot = get_next_speaker(db, last_speaker, last_mentioned)
                 logger.info(f"--- TURN {turn_idx+1}: {current_bot.upper()} ---")
     
-                # 해당 발언자 봇만 켰다가 끄기
-                async with llm_lifecycle(f"ameva-llm-{current_bot.replace('_', '-')}", port_map[current_bot]):
-                    reply_content, mentioned = await generate_relay_reply(db, post, current_bot)
+                reply_content, mentioned = await generate_relay_reply(db, post, current_bot, turn_idx)
                 
                 c = save_relay_comment(db, post, parent_comment_id, current_bot, reply_content, mentioned)
     
@@ -1751,7 +2247,7 @@ def sanitize_generated_reply(text: str) -> str:
         return ""
         
     # Remove hallucinated bot prefixes
-    text = re.sub(r'^(?i)bot_[123]:\s*', '', text)
+    text = re.sub(r'^bot_[123]:\s*', '', text, flags=re.IGNORECASE)
 
     # 1) 내부 지침 헤더 라인 제거
     text = re.sub(
@@ -1824,9 +2320,17 @@ async def restart_session(session_id: int):
         db.commit()
 
         logger.info(f"[ORCHESTRATOR] Restarting session {session_id} from turn {max_turn_idx}")
-        # 신 LLM을 상시 켜둠
+        
+        bot_targets = [
+            ("ameva-llm-bot-1", 8102),
+            ("ameva-llm-bot-2", 8103),
+            ("ameva-llm-bot-3", 8104),
+        ]
+
+        # 신 LLM 및 봇들을 상시 켜둠
         async with llm_lifecycle("ameva-llm-god", 8105):
-            await run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=max_turn_idx)
+            async with multi_llm_lifecycle(bot_targets):
+                await run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=max_turn_idx)
         
         logger.info("[ORCHESTRATOR] [RESTART END] Completed relay phase.")
         state_manager.set_state(SystemState.IDLE)
