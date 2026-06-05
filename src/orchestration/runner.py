@@ -858,7 +858,7 @@ async def create_initial_stances(db, post):
 
     return stances, last_comment, last_speaker
 
-def build_turn_context(db, post, current_bot):
+def build_turn_context(db, post, current_bot, use_structured=False):
     bot_state = get_or_create_bot_state(db, current_bot)
 
     anger_dict = safe_json_loads(bot_state.anger_targets, {})
@@ -884,16 +884,23 @@ def build_turn_context(db, post, current_bot):
     )
 
     def _format_recent_history(items):
-        lines = []
+        valid_items = []
         for item in reversed(items):
             if not item or not item.content:
                 continue
             msg = sanitize_generated_reply(item.content)
             if not msg:
                 continue
-            # 대본 형식(bot_x: ...) 대신 구조화된 텍스트로 전달
-            lines.append(f"- speaker={item.bot_name} | message={msg}")
-        return "\n".join(lines).strip()
+            valid_items.append({"bot_name": item.bot_name, "message": msg})
+
+        if use_structured:
+            from src.core.prompt_adapter import prompt_adapter
+            return prompt_adapter.build_structured_history(valid_items)
+        else:
+            lines = []
+            for item in valid_items:
+                lines.append(f"{item['bot_name']}: {item['message']}")
+            return "\n".join(lines).strip()
 
     recent_history = _format_recent_history(recent_c)
 
@@ -903,31 +910,51 @@ def build_turn_context(db, post, current_bot):
     return safe_anger_dict, eff_anger, emotion_directive, recent_history
 
 
-async def generate_relay_reply(db, post, current_bot):
+async def generate_relay_reply(db, post, current_bot, turn_idx=0):
+    import os
     persona = await PersonaManager.get_persona(current_bot)
     bot_client = bots[current_bot]
 
-    safe_anger_dict, eff_anger, emotion_directive, recent_history = build_turn_context(db, post, current_bot)
+    # [LPDE Feature Flags]
+    LPDE_STRUCTURED_HISTORY = os.getenv("LPDE_STRUCTURED_HISTORY", "true").lower() == "true"
+    LPDE_FULL_PROMPT = os.getenv("LPDE_FULL_PROMPT", "false").lower() == "true"
+
+    # [LPDE Phase 1A] Shadow Mode Update
+    from src.core.personality_engine import personality_engine
+    personality_engine.update_fast_state(db, post.session_id, current_bot, turn_index=turn_idx)
+
+    safe_anger_dict, eff_anger, emotion_directive, recent_history = build_turn_context(
+        db, post, current_bot, use_structured=LPDE_STRUCTURED_HISTORY
+    )
     god_directive = await generate_director_directive(db, current_bot, recent_history, eff_anger)
 
-    prompt = (
-        f"Post Content: {post.content}\n\n"
-        f"Recent Conversation:\n{recent_history if recent_history else 'No recent conversation'}\n\n"
-        f"Current Speaker: {current_bot}\n"
-        f"Instruction: You are {current_bot}. "
-        f"Respond ONLY as {current_bot} in 1-2 sentences in English.\n"
-        f"Do NOT write dialogue for other bots. "
-        f"Do NOT write a chat script. "
-        f"Do NOT use 'bot_x:' prefixes. "
-        f"Output only your own final message.\n"
-        f"You MUST mention exactly one of '@bot_1', '@bot_2', or '@bot_3' at the end of your message (do NOT mention yourself).\n"
-    )
+    if LPDE_FULL_PROMPT:
+        # Phase 1B: 추후 PromptAdapter를 활용해 완전히 구조화된 LPDE 프롬프트 생성
+        prompt = (
+            f"Post Content: {post.content}\n\n"
+            f"{recent_history if recent_history else 'No recent conversation'}\n\n"
+            f"[System] You are {current_bot}. Respond to the above conversation based on your internal LPDE state.\n"
+        )
+    else:
+        # Phase 1A: 기존 프롬프트 구조 유지 (Shadow Mode)
+        prompt = (
+            f"Post Content: {post.content}\n\n"
+            f"Recent Conversation:\n{recent_history if recent_history else 'No recent conversation'}\n\n"
+            f"Current Speaker: {current_bot}\n"
+            f"Instruction: You are {current_bot}. "
+            f"Respond ONLY as {current_bot} in 1-2 sentences in English.\n"
+            f"Do NOT write dialogue for other bots. "
+            f"Do NOT write a chat script. "
+            f"Do NOT use 'bot_x:' prefixes. "
+            f"Output only your own final message.\n"
+            f"You MUST mention exactly one of '@bot_1', '@bot_2', or '@bot_3' at the end of your message (do NOT mention yourself).\n"
+        )
 
-    if god_directive:
-        prompt += f"\nDirector Hint: {god_directive}\n"
+        if god_directive:
+            prompt += f"\nDirector Hint: {god_directive}\n"
 
-    if emotion_directive:
-        prompt += f"\nEmotional State: {emotion_directive}\n"
+        if emotion_directive:
+            prompt += f"\nEmotional State: {emotion_directive}\n"
 
     reply_content = await bot_client.generate_completion(
         persona, 
@@ -1075,7 +1102,7 @@ async def run_relay_phase(db, session, post, last_comment, last_speaker, start_t
                 current_bot = get_next_speaker(db, last_speaker, last_mentioned)
                 logger.info(f"--- TURN {turn_idx+1}: {current_bot.upper()} ---")
     
-                reply_content, mentioned = await generate_relay_reply(db, post, current_bot)
+                reply_content, mentioned = await generate_relay_reply(db, post, current_bot, turn_idx)
                 
                 c = save_relay_comment(db, post, parent_comment_id, current_bot, reply_content, mentioned)
     

@@ -99,12 +99,34 @@ async def get_bot_states(db: DbSession = Depends(get_db)):
             "persona": b.persona,
             "current_directive": b.current_directive,
             "anger_targets": anger_dict,
-            "eff_anger": eff
+            "effective_anger": eff
         })
-    return {
-        "session_status": session_status,
-        "bots": bot_states
-    }
+        
+    return {"states": bot_states, "session_status": session_status}
+
+@app.get("/api/lpde/state")
+async def get_lpde_states(db: DbSession = Depends(get_db)):
+    import json
+    from src.db.models import CurrentAgentState
+    
+    lpde_states = db.query(CurrentAgentState).all()
+    results = []
+    for s in lpde_states:
+        def safe_load(val):
+            try:
+                return json.loads(val) if val else []
+            except:
+                return []
+                
+        results.append({
+            "session_id": s.session_id,
+            "bot_name": s.bot_name,
+            "affect": safe_load(s.affect_json),
+            "opinion": safe_load(s.opinion_json),
+            "power": safe_load(s.power_json),
+            "updated_at": s.updated_at.strftime("%Y-%m-%d %H:%M:%S") if s.updated_at else None
+        })
+    return {"lpde_states": results}
 
 @app.get("/api/system/status")
 async def get_system_status():
