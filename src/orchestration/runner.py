@@ -12,23 +12,25 @@ import urllib.error
 
 import psutil
 from datetime import datetime
+from contextlib import asynccontextmanager
 from src.db.database import SessionLocal
-from src.db.models import Session, Post, Comment, BotState
+from src.db.models import Session, Post, Comment, BotState, SessionBotState
 from src.core.llm_client import LLMClient
 from src.core.persona import PersonaManager
+from src.orchestration.state_manager import state_manager, SystemState, Checkpoint
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s")
 logger = logging.getLogger("Orchestrator")
 
-main_llm = LLMClient("http://llm-main:8080")
-#police_llm = LLMClient("http://llm-police:8080")
-god_llm = LLMClient("http://llm-god:8080")
+main_llm = LLMClient("http://localhost:8101")
+#police_llm = LLMClient("http://localhost:8106")
+god_llm = LLMClient("http://localhost:8105")
 
 bots = {
-    "bot_1": LLMClient("http://llm-bot-1:8080"),
-    "bot_2": LLMClient("http://llm-bot-2:8080"),
-    "bot_3": LLMClient("http://llm-bot-3:8080")
+    "bot_1": LLMClient("http://localhost:8102"),
+    "bot_2": LLMClient("http://localhost:8103"),
+    "bot_3": LLMClient("http://localhost:8104")
 }
 
 def docker_start(container_name: str) -> bool:
@@ -72,6 +74,10 @@ async def wait_for_http_ready(url: str, timeout: int = 120, interval: int = 2) -
     start_time = time.time()
 
     while time.time() - start_time < timeout:
+        if state_manager.state == SystemState.STOPPING:
+            logger.info(f"[HEALTH] STOPPING state detected. Aborting wait for {url}.")
+            return False
+            
         try:
             def _probe():
                 with urllib.request.urlopen(url, timeout=5) as response:
@@ -119,7 +125,7 @@ async def close_session_if_any_metric_exceeded(db, session, threshold: float = 1
                 logger.warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
                 session.status = "CLOSED_BY_THRESHOLD"
-                session.closed_at = datetime.utcnow()
+                session.closed_at = datetime.now()
                 session.reason = f"METRIC_THRESHOLD_{int(threshold)}"
                 db.commit()
                 return True
@@ -133,28 +139,45 @@ async def close_session_if_any_metric_exceeded(db, session, threshold: float = 1
 
     return False
 
-async def ensure_llm_main_ready() -> bool:
-    container_name = "ameva-llm-main"
-    ready_url = "http://localhost:8101/health"
-
-    if not docker_start(container_name):
-        return False
-
-    return await wait_for_http_ready(ready_url, timeout=120, interval=2)
-
-
-def stop_llm_main_if_running():
-    docker_stop("ameva-llm-main")
+@asynccontextmanager
+async def llm_lifecycle(container_name: str, port: int, timeout: int = 120):
+    """
+    지정된 도커 컨테이너를 시작하고, 헬스체크 대기 후 실행 컨텍스트를 제공.
+    블록을 빠져나오면 자원을 반납(종료)함.
+    """
+    ready_url = f"http://localhost:{port}/health"
+    try:
+        docker_start(container_name)
+        ready = await wait_for_http_ready(ready_url, timeout=timeout, interval=2)
+        if not ready:
+            logger.warning(f"[LIFECYCLE] {container_name} 가 제한시간 내에 준비되지 않았습니다.")
+        yield ready
+    finally:
+        docker_stop(container_name)
 
 async def smart_sleep():
     """Sleep based on CPU usage to prevent bottlenecking."""
+    if state_manager.state == SystemState.STOPPING:
+        return
+        
     cpu_usage = await asyncio.to_thread(psutil.cpu_percent, 0.5)
+    
+    if state_manager.state == SystemState.STOPPING:
+        return
+        
     if cpu_usage >= 90.0:
         logger.info(f"[THROTTLE] CPU usage high ({cpu_usage}%). Sleeping for 10 seconds.")
-        await asyncio.sleep(10)
+        # 간격 단위로 쪼개어 STOPPING 상태를 지속 감시
+        for _ in range(10):
+            if state_manager.state == SystemState.STOPPING:
+                return
+            await asyncio.sleep(1)
     else:
         logger.info(f"[THROTTLE] CPU usage normal ({cpu_usage}%). Sleeping for 5 seconds.")
-        await asyncio.sleep(5)
+        for _ in range(5):
+            if state_manager.state == SystemState.STOPPING:
+                return
+            await asyncio.sleep(1)
 
 def reset_bot_states(db):
     states = db.query(BotState).all()
@@ -194,11 +217,11 @@ async def evaluate_spectator_anger(speaker: str, comment_text: str, spectators: 
     spec_1, spec_2 = spectators[0], spectators[1]
 
     prompt = (
-        f"너는 발언이 관전자에게 얼마나 강한 반감을 유발하는지 수치로 평가하는 분석 AI다.\n"
-        f"방금 {speaker}가 다음과 같이 발언했다:\n\"{comment_text}\"\n\n"
-        f"이 발언을 지켜본 관전자 {spec_1}과(와) {spec_2}가 각각 {speaker}를 향해 얼마나 분노를 느낄지 "
-        f"0에서 20 사이의 증가치로 평가해라.\n"
-        f"반드시 아래 JSON 형식으로만 대답해라. 절대 다른 말은 추가하지 마라.\n"
+        f"You are an analysis AI evaluating how much a speaker's statement provokes anger in spectators.\n"
+        f"Speaker {speaker} just said:\n\"{comment_text}\"\n\n"
+        f"Evaluate how much anger the spectators {spec_1} and {spec_2} will feel towards {speaker} based on this statement. "
+        f"Provide an anger increase value between 0 and 20.\n"
+        f"You MUST output ONLY valid JSON in the exact format below, with no other text:\n"
         f"{{"
         f"\"{spec_1}\": {{\"increase\": 10, \"target\": \"{speaker}\"}}, "
         f"\"{spec_2}\": {{\"increase\": 5, \"target\": \"{speaker}\"}}"
@@ -206,7 +229,7 @@ async def evaluate_spectator_anger(speaker: str, comment_text: str, spectators: 
     )
 
     result = await god_llm.generate_completion(
-        "너는 감정 반응을 수치화하는 평가자다.",
+        "You are an AI that quantifies emotional reactions.",
         prompt,
         max_tokens=150
     )
@@ -504,7 +527,7 @@ def build_emotion_prompt(bot_name: str, anger_targets: dict, effective_anger: fl
             "차분하고 분명한 태도로 짧게 반응해라. "
             "내부 지침 문구를 그대로 출력하지 마라."
         )
-async def generate_director_directive(current_bot: str, recent_history: str, eff_anger: float) -> str:
+async def generate_director_directive(db, current_bot: str, recent_history: str, eff_anger: float) -> str:
     """God LLM generates a short, safe directive for the current speaker based on conversation context."""
     logger.info(f"[GOD LLM] Generating dynamic director's directive for {current_bot}...")
 
@@ -570,11 +593,16 @@ async def generate_director_directive(current_bot: str, recent_history: str, eff
 
         # 6) 너무 짧거나 비정상이면 안전 fallback
         if not directive or len(directive) < 5:
-            directive = "상대의 핵심 주장 하나를 짚고, 그 근거를 구체적으로 요구해라."
+            directive = "Point out one of the opponent's core arguments and specifically demand evidence for it."
 
         # 7) 길이 제한
         if len(directive) > 120:
             directive = directive[:120].rstrip()
+            
+        bot_state = db.query(BotState).filter(BotState.bot_name == current_bot).first()
+        if bot_state:
+            bot_state.current_directive = directive
+            db.commit()
 
         logger.info(f"[GOD LLM] Director's Directive for {current_bot}: {directive}")
         return directive
@@ -637,31 +665,30 @@ async def create_post_with_main_llm(db, session):
     post_content = ""
 
     try:
-        llm_ready = await ensure_llm_main_ready()
-        if not llm_ready:
-            logger.warning("[LLM-MAIN] main container was not ready. Falling back to static topics.")
-        else:
-            post_content = await main_llm.generate_completion(
-                "너는 커뮤니티의 익명 게시글 작성자다. 무작위의 논쟁적인 주제로 짧은 글을 하나 작성해라. 한국어로만 작성해라.",
-                "새로운 글을 작성해줘.",
-                max_tokens=300
-            )
-    finally:
-        # 글 생성 시도 후에는 항상 내려서 리소스 절약
-        stop_llm_main_if_running()
+        async with llm_lifecycle("ameva-llm-main", 8101) as is_ready:
+            if not is_ready:
+                logger.warning("[LLM-MAIN] main container was not ready. Falling back to static topics.")
+            else:
+                post_content = await main_llm.generate_completion(
+                    "You are an anonymous community forum user. Write a short, controversial post on a random topic. Write in English only.",
+                    "Write a new post.",
+                    max_tokens=300
+                )
+    except Exception as e:
+        logger.error(f"[LLM-MAIN] Error generating topic: {e}")
 
     post_content = normalize_post_content(post_content)
 
     if not post_content:
         fallback_topics = [
-            "인공지능이 인간의 일자리를 대체하는 것이 과연 옳은 일인가?",
-            "요즘 젊은 세대가 예의가 없다는 말, 동의하시나요?",
-            "집값이 이렇게 비싼데 결혼을 꼭 해야 하나요?",
-            "학벌이 중요한가, 실력이 중요한가? 솔직하게 말해보자.",
-            "반려동물을 키우는 사람이 아이를 키우는 사람보다 이기적인가?",
-            "군대 의무 복무제, 폐지해야 하나 유지해야 하나?",
-            "유튜버나 스트리머가 진짜 직업이라고 할 수 있나?",
-            "편의점 알바 최저시급이 너무 적은가, 적절한가?",
+            "Is it really a good thing that AI is replacing human jobs?",
+            "Do you agree that the younger generation has no manners these days?",
+            "With housing prices so high, is marriage really necessary?",
+            "What's more important: academic pedigree or actual skills? Let's be honest.",
+            "Are people who raise pets more selfish than people who raise children?",
+            "Should mandatory military service be abolished or maintained?",
+            "Can being a YouTuber or streamer really be considered a real job?",
+            "Is the minimum wage for convenience store workers too low, or appropriate?",
         ]
         post_content = random.choice(fallback_topics)
 
@@ -689,15 +716,28 @@ async def run_session():
         db.commit()
         db.refresh(session)
 
+        state_manager.current_session_id = session.id
         post = await create_post_with_main_llm(db, session)
-        stances, last_comment, last_speaker = await create_initial_stances(db, post)
-        await run_relay_phase(db, session, post, last_comment, last_speaker)
+        await state_manager.wait_at_checkpoint(Checkpoint.TOPIC_GEN_DONE)
 
-        logger.info("[ORCHESTRATOR] [SESSION END] Waiting 10 seconds before next cycle...")
+        # 신 LLM은 정치인 LLM 종료 직후부터 아고라(초기 의견 + 릴레이) 내내 상시 켜둠
+        async with llm_lifecycle("ameva-llm-god", 8105):
+            stances, last_comment, last_speaker = await create_initial_stances(db, post)
+            await state_manager.wait_at_checkpoint(Checkpoint.PHASE1_DONE)
 
+            await run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=0)
+
+        logger.info("[ORCHESTRATOR] [SESSION END] Completed relay phase.")
+        state_manager.set_state(SystemState.IDLE)
+        state_manager.checkpoint = Checkpoint.NONE
+
+    except InterruptedError:
+        logger.info("[ORCHESTRATOR] Session stopped via command.")
+        state_manager.set_state(SystemState.IDLE)
     except Exception as e:
         logger.error(f"[ERROR] Session loop failed: {e}")
         db.rollback()
+        state_manager.set_state(SystemState.IDLE)
     finally:
         db.close()
 
@@ -708,24 +748,26 @@ async def create_initial_stances(db, post):
     initial_order = ["bot_1", "bot_2", "bot_3"]
 
     for b_name in initial_order:
+        if state_manager.state == SystemState.STOPPING:
+            raise InterruptedError("SESSION_STOPPED")
+            
         await smart_sleep()
         try:
             persona = await PersonaManager.get_persona(b_name)
             bot_client = bots[b_name]
 
             prompt = (
-                f"게시글 내용: {post.content}\n\n"
-                f"이 게시글에 대한 너의 첫 의견을 한국어로 짧게 남겨라.\n"
-                f"- 멘션은 하지 마라.\n"
-                f"- 내부 지침이나 메타 설명은 출력하지 마라.\n"
-                f"- 1~3문장 이내로 자연스럽게 작성해라."
+                f"Post Content: {post.content}\n\n"
+                f"Instruction: State your position on the above post clearly and concisely in 1-2 sentences. Reply in English.\n"
             )
 
-            reply_content = await bot_client.generate_completion(
-                persona,
-                prompt,
-                max_tokens=120
-            )
+            port_map = {"bot_1": 8102, "bot_2": 8103, "bot_3": 8104}
+            async with llm_lifecycle(f"ameva-llm-{b_name.replace('_', '-')}", port_map[b_name]):
+                reply_content = await bot_client.generate_completion(
+                    persona,
+                    prompt,
+                    max_tokens=120
+                )
 
             reply_content = sanitize_generated_reply(reply_content)
 
@@ -812,32 +854,26 @@ async def generate_relay_reply(db, post, current_bot):
     bot_client = bots[current_bot]
 
     safe_anger_dict, eff_anger, emotion_directive, recent_history = build_turn_context(db, post, current_bot)
-    god_directive = await generate_director_directive(current_bot, recent_history, eff_anger)
+    god_directive = await generate_director_directive(db, current_bot, recent_history, eff_anger)
 
     prompt = (
-        f"게시글 내용: {post.content}\n\n"
-        f"최근 대화:\n{recent_history if recent_history else '최근 대화 없음'}\n\n"
-        f"=== 내부 지침 (절대 그대로 출력하지 마라) ===\n"
-        f"{emotion_directive}\n"
-        f"[보조 지시]\n{god_directive}\n"
-        f"=== 내부 지침 끝 ===\n\n"
-        f"규칙:\n"
-        f"- 한국어로 자연스러운 댓글만 작성해라.\n"
-        f"- 내부 지침, 감정 수치, 메타 문구를 그대로 출력하지 마라.\n"
-        f"- 짧고 분명하게 반응해라.\n"
-        f"- 글 마지막에 '@bot_1', '@bot_2', '@bot_3' 중 하나만 멘션해라.\n"
-        f"- 자기 자신은 멘션하지 마라.\n"
+        f"Post Content: {post.content}\n\n"
+        f"Recent Conversation:\n{recent_history if recent_history else 'No recent conversation'}\n\n"
+        f"Instruction: State your opinion by either refuting or agreeing with the recent conversation in 1-2 sentences. Reply in English.\n"
+        f"You MUST mention exactly one of '@bot_1', '@bot_2', or '@bot_3' at the end of your message (do NOT mention yourself).\n"
     )
+    if emotion_directive:
+        prompt += f"\nEmotional State: {emotion_directive}\n"
 
     reply_content = await bot_client.generate_completion(persona, prompt, max_tokens=150)
     reply_content = sanitize_generated_reply(reply_content)
 
     if not reply_content:
         fallback_replies = [
-            "그건 핵심을 비켜간 말 같아.",
-            "논점이 조금 흐려진 것 같은데.",
-            "근거를 좀 더 분명히 말해봐.",
-            "지금 주장에는 빠진 부분이 있어 보인다.",
+            "That seems to miss the core point.",
+            "The argument is getting a bit muddy.",
+            "You need to provide clearer evidence for that.",
+            "There seems to be a missing piece in your claim right now.",
         ]
         reply_content = random.choice(fallback_replies)
 
@@ -935,37 +971,62 @@ def get_or_create_bot_state(db, current_bot):
 
     return bot_state
 
-async def run_relay_phase(db, session, post, last_comment, last_speaker):
-    logger.info("[PHASE 2] Targeted Anger Battle Started")
+def save_session_bot_state(db, session_id: int, turn_idx: int):
+    states = db.query(BotState).all()
+    for s in states:
+        record = SessionBotState(
+            session_id=session_id,
+            turn_index=turn_idx,
+            bot_name=s.bot_name,
+            persona=s.persona,
+            current_directive=s.current_directive,
+            anger_targets=s.anger_targets
+        )
+        db.add(record)
+    db.commit()
+
+async def run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=0):
+    logger.info(f"[PHASE 2] Targeted Anger Battle Started (Start Turn: {start_turn_idx})")
 
     candidates_for_mention = [b for b in ["bot_1", "bot_2", "bot_3"] if b != last_speaker]
     last_mentioned = random.choice(candidates_for_mention) if candidates_for_mention else "bot_1"
     parent_comment_id = last_comment.id if last_comment else None
+    port_map = {"bot_1": 8102, "bot_2": 8103, "bot_3": 8104}
 
-    for turn_idx in range(20):
+    # 신 LLM은 상위 블록(run_session, restart_session)에서 이미 켜져 있음
+    for turn_idx in range(start_turn_idx, 20):
         await smart_sleep()
 
         try:
-            current_bot = get_next_speaker(db, last_speaker, last_mentioned)
-            logger.info(f"--- TURN {turn_idx+1}: {current_bot.upper()} ---")
+                current_bot = get_next_speaker(db, last_speaker, last_mentioned)
+                logger.info(f"--- TURN {turn_idx+1}: {current_bot.upper()} ---")
+    
+                # 해당 발언자 봇만 켰다가 끄기
+                async with llm_lifecycle(f"ameva-llm-{current_bot.replace('_', '-')}", port_map[current_bot]):
+                    reply_content, mentioned = await generate_relay_reply(db, post, current_bot)
+                
+                c = save_relay_comment(db, post, parent_comment_id, current_bot, reply_content, mentioned)
+    
+                await apply_spectator_anger(db, current_bot, reply_content)
+    
+                save_session_bot_state(db, session.id, turn_idx)
+                
+                await state_manager.wait_at_checkpoint(Checkpoint.TURN_DONE, turn_idx)
 
-            reply_content, mentioned = await generate_relay_reply(db, post, current_bot)
-            c = save_relay_comment(db, post, parent_comment_id, current_bot, reply_content, mentioned)
-
-            await apply_spectator_anger(db, current_bot, reply_content)
-
-            # 1) 참가자 한 명이라도 metric >= 120 이면 세션 종료
-            if await close_session_if_any_metric_exceeded(db, session, threshold=120.0):
-                return
-
-            # 2) 기존 다중 participant 조건
-            if await close_session_if_police_dispatch(db, session):
-                return
-
-            last_speaker = current_bot
-            last_mentioned = mentioned if mentioned else last_mentioned
-            parent_comment_id = c.id
-
+                # 1) 참가자 한 명이라도 metric >= 120 이면 세션 종료
+                if await close_session_if_any_metric_exceeded(db, session, threshold=120.0):
+                    return
+    
+                # 2) 기존 다중 participant 조건
+                if await close_session_if_police_dispatch(db, session):
+                    return
+    
+                last_speaker = current_bot
+                last_mentioned = mentioned if mentioned else last_mentioned
+                parent_comment_id = c.id
+    
+        except InterruptedError:
+            raise
         except Exception as turn_error:
             logger.error(f"[TURN ERROR] turn_idx={turn_idx+1}, error={turn_error}")
             db.rollback()
@@ -1043,8 +1104,58 @@ def sanitize_generated_reply(text: str) -> str:
     text = text.strip()
     return text
     
-async def start_orchestrator_loop():
-    logger.info("[System] Starting orchestrator loop...")
-    while True:
-        await run_session()
-        await asyncio.sleep(10)
+async def restart_session(session_id: int):
+    db = SessionLocal()
+    try:
+        session = db.query(Session).filter(Session.id == session_id).first()
+        if not session:
+            logger.error(f"Session {session_id} not found.")
+            state_manager.set_state(SystemState.IDLE)
+            return
+
+        state_manager.current_session_id = session.id
+        
+        post = db.query(Post).filter(Post.session_id == session_id).first()
+        if not post:
+            logger.error(f"No post found for session {session_id}. Cannot restart.")
+            state_manager.set_state(SystemState.IDLE)
+            return
+            
+        last_comment = db.query(Comment).filter(Comment.post_id == post.id).order_by(Comment.id.desc()).first()
+        last_speaker = last_comment.bot_name if last_comment else "bot_1"
+
+        # Find max turn index safely by querying the max stored for this session
+        latest_state = db.query(SessionBotState).filter(SessionBotState.session_id == session_id).order_by(SessionBotState.turn_index.desc()).first()
+        max_turn_idx = (latest_state.turn_index + 1) if latest_state else 0
+
+        # Restore states
+        for bot_name in ["bot_1", "bot_2", "bot_3"]:
+            st = db.query(SessionBotState).filter(SessionBotState.session_id == session_id, SessionBotState.bot_name == bot_name).order_by(SessionBotState.turn_index.desc()).first()
+            if st:
+                bs = db.query(BotState).filter(BotState.bot_name == bot_name).first()
+                if not bs:
+                    bs = BotState(bot_name=bot_name)
+                    db.add(bs)
+                bs.persona = st.persona
+                bs.current_directive = st.current_directive
+                bs.anger_targets = st.anger_targets
+
+        db.commit()
+
+        logger.info(f"[ORCHESTRATOR] Restarting session {session_id} from turn {max_turn_idx}")
+        # 신 LLM을 상시 켜둠
+        async with llm_lifecycle("ameva-llm-god", 8105):
+            await run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=max_turn_idx)
+        
+        logger.info("[ORCHESTRATOR] [RESTART END] Completed relay phase.")
+        state_manager.set_state(SystemState.IDLE)
+        state_manager.checkpoint = Checkpoint.NONE
+
+    except InterruptedError:
+        logger.info("[ORCHESTRATOR] Session stopped via command.")
+        state_manager.set_state(SystemState.IDLE)
+    except Exception as e:
+        logger.error(f"[ERROR] Restart failed: {e}")
+        state_manager.set_state(SystemState.IDLE)
+    finally:
+        db.close()
