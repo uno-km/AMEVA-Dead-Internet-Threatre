@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import random
 import re
 import json
@@ -17,6 +18,9 @@ from src.db.database import SessionLocal
 from src.db.models import Session, Post, Comment, BotState, SessionBotState
 from src.core.llm_client import LLMClient
 from src.core.persona import PersonaManager
+from src.core.event_extractor import extract_events
+from src.core.personality_engine import personality_engine
+from src.core.prompt_adapter import prompt_adapter
 from src.orchestration.state_manager import state_manager, SystemState, Checkpoint
 
 # Configure logging
@@ -564,7 +568,7 @@ async def generate_director_directive(db, current_bot: str, recent_history: str,
     logger.info(f"[GOD LLM] Generating dynamic director's directive for {current_bot}...")
 
     try:
-        # 1) 입력값 방어
+        # Input validation
         if not isinstance(current_bot, str) or not current_bot.strip():
             current_bot = "bot"
 
@@ -578,13 +582,16 @@ async def generate_director_directive(db, current_bot: str, recent_history: str,
         if not isinstance(recent_history, str):
             recent_history = ""
 
-        # 2) 최근 대화 오염 제거 + 길이 제한
+        # Clean recent history: remove meta headers and internal directives
         recent_history = recent_history.strip()
-        recent_history = re.sub(r'^\s*\[.*?\]\s*$', '', recent_history, flags=re.MULTILINE)  # 메타 헤더 제거
-        recent_history = re.sub(r'^\s*(Total Effective Anger|Major Target Anger Scores|Total effective anger|Major target anger scores|총합 유효 분노|주요 타겟 분노치|나의 총합 유효 분노|나의 타겟별 분노치)\s*[:：=].*$', '', recent_history, flags=re.MULTILINE)
+        recent_history = re.sub(r'^\s*\[.*?\]\s*$', '', recent_history, flags=re.MULTILINE)
+        recent_history = re.sub(
+            r'^\s*(Total Effective Anger|Major Target Anger Scores)\s*[:=].*$',
+            '', recent_history, flags=re.MULTILINE | re.IGNORECASE
+        )
         recent_history = re.sub(r'\n\s*\n+', '\n', recent_history).strip()
 
-        # 너무 길면 마지막 부분만 사용
+        # Truncate if too long
         if len(recent_history) > 500:
             recent_history = recent_history[-500:]
 
@@ -607,26 +614,25 @@ async def generate_director_directive(db, current_bot: str, recent_history: str,
 
         directive = str(result).strip() if result else ""
 
-        # 3) 코드블록/따옴표/메타 제거
+        # Strip code blocks, quotes, and meta wrappers
         directive = re.sub(r"```(?:json|text)?\s*(.*?)\s*```", r"\1", directive, flags=re.DOTALL)
-        directive = re.sub(r'^\s*["“”\'`]+|["“”\'`]+\s*$', '', directive)
+        directive = re.sub(r'^\s*["\'`]+|["\'`]+\s*$', '', directive)
         directive = re.sub(r'^\s*\[.*?\]\s*', '', directive)
-        directive = re.sub(r'^\s*(지시사항|출력|답변)\s*[:：]\s*', '', directive)
 
-        # 4) 여러 줄이면 첫 줄만
+        # Multi-line: take first line only
         if '\n' in directive:
             directive = directive.split('\n')[0].strip()
 
-        # 5) 여러 문장이면 첫 문장만
-        sentence_match = re.match(r'^(.+?[.!?。]|.+?$)', directive)
+        # Multi-sentence: take first sentence only
+        sentence_match = re.match(r'^(.+?[.!?]|.+?$)', directive)
         if sentence_match:
             directive = sentence_match.group(1).strip()
 
-        # 6) 너무 짧거나 비정상이면 안전 fallback
+        # Fallback if too short or invalid
         if not directive or len(directive) < 5:
             directive = "Point out one of the opponent's core arguments and specifically demand evidence for it."
 
-        # 7) 길이 제한
+        # Length limit
         if len(directive) > 120:
             directive = directive[:120].rstrip()
             
@@ -934,8 +940,10 @@ async def build_turn_context(db, post, current_bot, use_structured=False):
     return safe_anger_dict, eff_anger, emotion_directive, recent_history
 
 
-async def generate_relay_reply(db, post, current_bot, turn_idx=0):
-    import os
+async def generate_relay_reply(
+    db, post, current_bot, turn_idx=0,
+    last_comment_text=None, last_speaker=None
+):
     persona = await PersonaManager.get_persona(current_bot)
     bot_client = bots[current_bot]
 
@@ -943,25 +951,98 @@ async def generate_relay_reply(db, post, current_bot, turn_idx=0):
     LPDE_STRUCTURED_HISTORY = os.getenv("LPDE_STRUCTURED_HISTORY", "true").lower() == "true"
     LPDE_FULL_PROMPT = os.getenv("LPDE_FULL_PROMPT", "false").lower() == "true"
     LPDE_LEGACY_PROMPT = os.getenv("LPDE_LEGACY_PROMPT", "false").lower() == "true"
+    LPDE_COUNTER_ARG = os.getenv("LPDE_COUNTER_ARG", "false").lower() == "true"
+    LPDE_INTERVENTION_ENABLED = os.getenv("LPDE_INTERVENTION", "false").lower() == "true"
 
-    # [LPDE Phase 1A] Shadow Mode Update
-    from src.core.personality_engine import personality_engine
-    personality_engine.update_fast_state(db, post.session_id, current_bot, turn_index=turn_idx)
+    # --- Phase 2A: Event Extraction from last comment ---
+    all_bots = ["bot_1", "bot_2", "bot_3"]
+    event_data = None
+    if last_comment_text and isinstance(last_comment_text, str):
+        # Extract events FROM the last comment (what the previous speaker did)
+        # These events affect the current_bot (receiver)
+        event_data = extract_events(
+            comment_text=last_comment_text,
+            speaker=last_speaker or "unknown",
+            all_bots=all_bots,
+            parent_comment_text=None,  # We track parent-of-parent later if needed
+            last_target=current_bot,
+        )
+    else:
+        event_data = {
+            "speaker": last_speaker or "unknown",
+            "target": None,
+            "events": [],
+            "intensity": 0.0,
+            "claim_snippet": "",
+        }
 
+    # --- Phase 2A: LPDE State Update (event-driven) ---
+    personality_engine.update_fast_state(
+        db, post.session_id, current_bot, turn_index=turn_idx, event_data=event_data
+    )
+
+    # Build turn context (anger dict, emotion directive, recent history)
     safe_anger_dict, eff_anger, emotion_directive, recent_history = await build_turn_context(
         db, post, current_bot, use_structured=LPDE_STRUCTURED_HISTORY
     )
     god_directive = await generate_director_directive(db, current_bot, recent_history, eff_anger)
 
+    # --- Phase 2B: Intervention (default OFF) ---
+    if LPDE_INTERVENTION_ENABLED:
+        try:
+            from src.core.intervention import (
+                generate_intervention_json, apply_intervention
+            )
+            lpde_state = personality_engine.get_current_state_dict(
+                db, post.session_id, current_bot
+            )
+            arousal_val = lpde_state.get("affect", [0.0, 0.0])[1]
+
+            # Intervention trigger conditions:
+            # Every 3 turns OR arousal > 0.7
+            should_intervene = (turn_idx % 3 == 0 and turn_idx > 0) or arousal_val > 0.7
+            if should_intervene:
+                intervention = await generate_intervention_json(
+                    god_llm, current_bot, lpde_state, recent_history, arousal_val
+                )
+                if intervention:
+                    apply_intervention(db, post.session_id, turn_idx, intervention)
+                    db.commit()
+                    logger.info(f"[INTERVENTION] Applied to {current_bot}: {intervention.get('kind')}")
+        except Exception as e:
+            logger.warning(f"[INTERVENTION WARNING] Failed: {e}")
+
+    # --- Build Prompt ---
     if LPDE_FULL_PROMPT:
-        # Phase 1B Placeholder: 추후 PromptAdapter를 활용해 완전히 구조화된 LPDE 프롬프트 생성 (현재는 임시 기능)
-        prompt = (
-            f"Post Content: {post.content}\n\n"
-            f"{recent_history if recent_history else 'No recent conversation'}\n\n"
-            f"[System] You are {current_bot}. Respond to the above conversation based on your internal LPDE state.\n"
+        # Phase 2A: Full LPDE-driven prompt via PromptAdapter
+        lpde_state = personality_engine.get_current_state_dict(
+            db, post.session_id, current_bot
+        )
+        edge_summary = personality_engine.get_edges_for_bot(
+            db, post.session_id, current_bot
+        )
+
+        # Determine target for prompt context
+        target_bot = event_data.get("target") if event_data else None
+        claim_snippet = ""
+        if last_comment_text:
+            from src.core.event_extractor import _extract_claim_snippet
+            claim_snippet = _extract_claim_snippet(last_comment_text)
+
+        prompt = prompt_adapter.build_prompt(
+            current_bot=current_bot,
+            persona=persona,
+            lpde_state=lpde_state,
+            edge_summary=edge_summary,
+            target_bot=target_bot,
+            recent_history=recent_history,
+            post_content=post.content,
+            claim_snippet=claim_snippet,
+            counter_arg_enabled=LPDE_COUNTER_ARG,
+            god_directive=god_directive,
         )
     elif LPDE_LEGACY_PROMPT:
-        # 진짜 legacy prompt 유지 (Shadow Mode 비교용)
+        # True legacy prompt (for A/B comparison)
         prompt = (
             f"Post Content: {post.content}\n\n"
             f"Recent Conversation:\n{recent_history if recent_history else 'No recent conversation'}\n\n"
@@ -970,7 +1051,7 @@ async def generate_relay_reply(db, post, current_bot, turn_idx=0):
             f"You MUST mention exactly one of '@bot_1', '@bot_2', or '@bot_3' at the end of your message (do NOT mention yourself).\n"
         )
     else:
-        # Phase 1A: 구조 강화된 prompt (shadow mode + hardening)
+        # Phase 1A: Hardened prompt (shadow mode + hardening)
         prompt = (
             f"Post Content: {post.content}\n\n"
             f"Recent Conversation:\n{recent_history if recent_history else 'No recent conversation'}\n\n"
@@ -1121,9 +1202,9 @@ async def run_relay_phase(db, session, post, last_comment, last_speaker, start_t
     candidates_for_mention = [b for b in ["bot_1", "bot_2", "bot_3"] if b != last_speaker]
     last_mentioned = random.choice(candidates_for_mention) if candidates_for_mention else "bot_1"
     parent_comment_id = last_comment.id if last_comment else None
-    port_map = {"bot_1": 8102, "bot_2": 8103, "bot_3": 8104}
+    last_comment_text = last_comment.content if last_comment else None
 
-    # 신 LLM은 상위 블록(run_session, restart_session)에서 이미 켜져 있음
+    # God LLM is already started in the parent block (run_session / restart_session)
     for turn_idx in range(start_turn_idx, 20):
         await smart_sleep()
 
@@ -1131,7 +1212,11 @@ async def run_relay_phase(db, session, post, last_comment, last_speaker, start_t
                 current_bot = get_next_speaker(db, last_speaker, last_mentioned)
                 logger.info(f"--- TURN {turn_idx+1}: {current_bot.upper()} ---")
     
-                reply_content, mentioned = await generate_relay_reply(db, post, current_bot, turn_idx)
+                reply_content, mentioned = await generate_relay_reply(
+                    db, post, current_bot, turn_idx,
+                    last_comment_text=last_comment_text,
+                    last_speaker=last_speaker,
+                )
                 
                 c = save_relay_comment(db, post, parent_comment_id, current_bot, reply_content, mentioned)
     
@@ -1141,17 +1226,18 @@ async def run_relay_phase(db, session, post, last_comment, last_speaker, start_t
                 
                 await state_manager.wait_at_checkpoint(Checkpoint.TURN_DONE, turn_idx)
 
-                # 1) 참가자 한 명이라도 metric >= 120 이면 세션 종료
+                # End session if any single participant exceeds threshold
                 if await close_session_if_any_metric_exceeded(db, session, threshold=120.0):
                     return
     
-                # 2) 기존 다중 participant 조건
+                # End session if police dispatch condition met
                 if await close_session_if_police_dispatch(db, session):
                     return
     
                 last_speaker = current_bot
                 last_mentioned = mentioned if mentioned else last_mentioned
                 parent_comment_id = c.id
+                last_comment_text = reply_content  # Pass text to next turn for event extraction
     
         except InterruptedError:
             raise

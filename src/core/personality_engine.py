@@ -342,7 +342,7 @@ class PersonalityEngine:
             )
 
             # 3. Snapshot (no commit inside)
-            self._snapshot(db, session_id, turn_index, agent)
+            self._snapshot(db, session_id, turn_index, agent, event_data)
         else:
             # Legacy fallback (pure decay)
             self.update_fast_state_legacy(db, session_id, bot_name, turn_index)
@@ -354,8 +354,16 @@ class PersonalityEngine:
     # Snapshot (NO db.commit inside — caller handles commit)
     # =================================================================
 
-    def _snapshot(self, db: Session, session_id: int, turn_index: int, agent: CurrentAgentState):
+    def _snapshot(self, db: Session, session_id: int, turn_index: int, agent: CurrentAgentState, event_data: Optional[dict] = None):
         """Record a turn-level snapshot. Does NOT commit — caller commits."""
+        # Stuff event_data into residual_json to avoid schema changes
+        residual = agent.residual_json
+        if event_data:
+            try:
+                residual = json.dumps(event_data, ensure_ascii=False)
+            except Exception:
+                pass
+
         snap = AgentStateSnapshot(
             session_id=session_id,
             turn_index=turn_index,
@@ -366,7 +374,7 @@ class PersonalityEngine:
             memory_json=agent.memory_json,
             opinion_json=agent.opinion_json,
             power_json=agent.power_json,
-            residual_json=agent.residual_json,
+            residual_json=residual
         )
         db.add(snap)
         # NO db.commit() here — batched in update_fast_state()

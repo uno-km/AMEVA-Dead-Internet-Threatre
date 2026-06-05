@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Depends, Query
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session as DbSession
 import logging
 
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI):
     logger.info("[System] Shutting down AMEVA-DeadInternetSociety...")
 
 app = FastAPI(title="AMEVA-DeadInternetSociety", lifespan=lifespan)
+app.mount("/static", StaticFiles(directory="src/ui/static"), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request):
@@ -243,6 +245,10 @@ async def get_bot_inspector_summary(
         "power": safe_load(current_state.power_json)
     }
 
+    from src.core.personality_engine import personality_engine
+    
+    relation_summary = personality_engine.get_edges_for_bot(db, session_id, bot_name)
+
     return {
         "bot_name": bot_name,
         "session_id": session_id,
@@ -256,6 +262,7 @@ async def get_bot_inspector_summary(
             "anger_targets": anger_dict
         },
         "lpde_tensors": lpde_tensors,
+        "relation_summary": relation_summary,
         "deltas": deltas
     }
 
@@ -309,6 +316,7 @@ async def get_bot_inspector_detail(
     ).order_by(AgentStateSnapshot.turn_index.desc()).limit(limit).all()
     
     time_series = []
+    recent_events = []
     for snap in reversed(snapshots):
         time_series.append({
             "turn_index": snap.turn_index,
@@ -316,6 +324,16 @@ async def get_bot_inspector_detail(
             "opinion": safe_load(snap.opinion_json),
             "power": safe_load(snap.power_json)
         })
+        
+        event_data = safe_load_dict(snap.residual_json)
+        if event_data and isinstance(event_data, dict) and event_data.get("events"):
+            recent_events.append({
+                "turn_index": snap.turn_index,
+                "events": event_data.get("events"),
+                "speaker": event_data.get("speaker"),
+                "target": event_data.get("target"),
+                "intensity": event_data.get("intensity", 0.0)
+            })
 
     # Edges
     edges = db.query(EdgeState).filter(
@@ -338,7 +356,8 @@ async def get_bot_inspector_detail(
         "raw_tensors": raw_tensors,
         "time_series": time_series,
         "edges": edges_data,
-        "interventions": interventions_data
+        "interventions": interventions_data,
+        "recent_events": recent_events
     }
 
 @app.get("/api/system/status")
