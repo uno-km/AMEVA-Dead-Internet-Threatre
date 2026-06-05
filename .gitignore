@@ -1,0 +1,27 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+env.bak/
+venv.bak/
+
+# SQLite databases
+*.sqlite3
+*.db
+data/*.db
+
+# Logs
+*.log
+data/*.log
+
+# IDEs
+.vscode/
+.idea/
+
+# Downloaded models
+models/
+*.gguf

@@ -8,7 +8,7 @@ class Session(Base):
     id = Column(Integer, primary_key=True, index=True)
     status = Column(String, default="ACTIVE") # ACTIVE, CLOSED
     reason = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
     closed_at = Column(DateTime, nullable=True)
 
     posts = relationship("Post", back_populates="session")
@@ -19,7 +19,7 @@ class Post(Base):
     session_id = Column(Integer, ForeignKey('sessions.id'))
     title = Column(String, index=True)
     content = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     session = relationship("Session", back_populates="posts")
     comments = relationship("Comment", back_populates="post")
@@ -33,7 +33,7 @@ class Comment(Base):
     content = Column(Text)
     anger_score = Column(Integer, default=0)
     mentioned_bot = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
 
     post = relationship("Post", back_populates="comments")
     replies = relationship("Comment", backref="parent", remote_side=[id])
@@ -43,5 +43,19 @@ class BotState(Base):
     id = Column(Integer, primary_key=True, index=True)
     bot_name = Column(String, unique=True, index=True)
     persona = Column(String)
+    current_directive = Column(String, nullable=True)
     anger_targets = Column(String, default="{}") # JSON string mapping target bot to anger value
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.now)
+
+class SessionBotState(Base):
+    __tablename__ = 'session_bot_states'
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey('sessions.id'), index=True)
+    turn_index = Column(Integer, index=True)
+    bot_name = Column(String, index=True)
+    persona = Column(String)
+    current_directive = Column(String, nullable=True)
+    anger_targets = Column(String, default="{}")
+    created_at = Column(DateTime, default=datetime.now)
+
+    session = relationship("Session", backref="bot_states")

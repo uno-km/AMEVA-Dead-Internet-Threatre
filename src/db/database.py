@@ -1,3 +1,4 @@
+import os
 import logging
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
@@ -5,12 +6,17 @@ from sqlalchemy.orm import declarative_base
 
 logger = logging.getLogger("Database")
 
-DATABASE_URL =  "sqlite:///./data/ameva_society.db"
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./ameva_society.db")
 
+# DB I/O 쿼리 내역을 콘솔(파이썬 터미널)에 실시간으로 출력하도록 echo=True 추가
 engine = create_engine(
     DATABASE_URL, 
-    connect_args={"check_same_thread": False, "timeout": 15}
+    connect_args={"check_same_thread": False, "timeout": 15},
+    echo=True
 )
+
+# SQLAlchemy 내부 로거가 쿼리를 출력하도록 설정
+logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
 
 # [핵심] SQLite 커넥션 생성 시 커널 레벨 PRAGMA(설정) 강제 주입
 @event.listens_for(engine, "connect")

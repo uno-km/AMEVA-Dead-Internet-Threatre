@@ -8,7 +8,8 @@ import logging
 
 from src.db.database import init_db, get_db
 from src.db.models import Session, Post, Comment, BotState
-from src.orchestration.runner import start_orchestrator_loop
+from src.orchestration.runner import run_session, restart_session
+from src.orchestration.state_manager import state_manager, SystemState
 
 templates = Jinja2Templates(directory="src/ui/templates")
 logger = logging.getLogger("API")
@@ -17,11 +18,7 @@ logger = logging.getLogger("API")
 async def lifespan(app: FastAPI):
     # 1. DB 초기화
     init_db()
-    logger.info("[System] Database initialized.")
-    
-    # 2. 백그라운드 루프(스레드/비동기 태스크) 가동
-    asyncio.create_task(start_orchestrator_loop())
-    logger.info("[System] Orchestrator loop started.")
+    logger.info("[System] Database initialized. Waiting in IDLE state.")
     
     yield
     
@@ -99,6 +96,8 @@ async def get_bot_states(db: DbSession = Depends(get_db)):
         eff = calculate_effective_anger(anger_dict)
         bot_states.append({
             "bot_name": b.bot_name,
+            "persona": b.persona,
+            "current_directive": b.current_directive,
             "anger_targets": anger_dict,
             "eff_anger": eff
         })
@@ -106,6 +105,78 @@ async def get_bot_states(db: DbSession = Depends(get_db)):
         "session_status": session_status,
         "bots": bot_states
     }
+
+@app.get("/api/system/status")
+async def get_system_status():
+    import subprocess
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run, 
+            ["docker", "ps", "--format", "{{.Names}}"], 
+            capture_output=True, 
+            text=True
+        )
+        running = result.stdout.strip().split("\n")
+        
+        containers = ["ameva-llm-main", "ameva-llm-god", "ameva-llm-bot-1", "ameva-llm-bot-2", "ameva-llm-bot-3"]
+        status = {}
+        for c in containers:
+            status[c] = "RUNNING" if c in running else "STOPPED"
+            
+        return {
+            "global_state": state_manager.state.value,
+            "checkpoint": state_manager.checkpoint.value,
+            **status
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/api/control/new")
+async def control_new():
+    if state_manager.state != SystemState.IDLE:
+        return {"error": "명령어 수행중입니다. 동작 못합니다."}
+    state_manager.set_state(SystemState.RUNNING)
+    asyncio.create_task(run_session())
+    return {"message": "New session started"}
+
+@app.post("/api/control/pause")
+async def control_pause():
+    if state_manager.state == SystemState.IDLE:
+        return {"error": "실행 중인 세션이 없습니다."}
+    if state_manager.state in [SystemState.PAUSING, SystemState.PAUSED]:
+        return {"error": "이미 중단 중이거나 중단된 상태입니다."}
+    state_manager.set_state(SystemState.PAUSING)
+    return {"message": "Pausing session..."}
+
+@app.post("/api/control/resume")
+async def control_resume():
+    if state_manager.state == SystemState.IDLE:
+        return {"error": "진행 중인 세션이 없습니다. 경고: 새로 시작하거나 이어하기를 이용하세요."}
+    if state_manager.state == SystemState.RUNNING:
+        return {"error": "이미 실행 중입니다."}
+    state_manager.set_state(SystemState.RUNNING)
+    return {"message": "Session resumed"}
+
+@app.post("/api/control/stop")
+async def control_stop():
+    if state_manager.state == SystemState.IDLE:
+        return {"error": "실행 중인 세션이 없습니다."}
+    state_manager.set_state(SystemState.STOPPING)
+    return {"message": "Stopping session..."}
+
+@app.post("/api/control/restart/{post_id}")
+async def control_restart(post_id: int, db: DbSession = Depends(get_db)):
+    if state_manager.state != SystemState.IDLE:
+        return {"error": "명령어 수행중입니다. 동작 못합니다."}
+        
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        return {"error": f"글 번호 {post_id}번을 찾을 수 없습니다."}
+        
+    session_id = post.session_id
+    state_manager.set_state(SystemState.RUNNING)
+    asyncio.create_task(restart_session(session_id))
+    return {"message": f"Restarting post {post_id} (Session {session_id})"}
 
 if __name__ == "__main__":
     import uvicorn

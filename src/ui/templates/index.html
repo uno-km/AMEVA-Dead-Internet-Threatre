@@ -60,9 +60,15 @@
             <!-- Bot States -->
             <div class="glass rounded-3xl p-5 shadow-lg">
                 <h2 class="text-lg font-bold mb-3 text-indigo-800 flex justify-between items-center">
-                    <span>에이전트 감정 상태</span>
+                    <span>시스템 상태 <span id="global-state-badge" class="ml-2 text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600">IDLE</span></span>
                     <span id="session-status-badge" class="text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600">UNKNOWN</span>
                 </h2>
+                
+                <div class="flex justify-between text-xs font-bold mb-4 bg-white bg-opacity-60 p-2 rounded-lg">
+                    <div class="flex items-center"><span id="main-status-dot" class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5"></span>정치인 LLM</div>
+                    <div class="flex items-center"><span id="god-status-dot" class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5"></span>신 LLM</div>
+                </div>
+
                 <div id="bot-states-container" class="space-y-4">
                     <!-- Injected by JS -->
                     <div class="text-sm text-gray-400 text-center py-4">로딩중...</div>
@@ -107,6 +113,34 @@
     <script>
         let currentPostId = null;
         let knownCommentIds = new Set();
+        let systemStatusMap = {};
+        
+        // --- Fetch System Status ---
+        async function fetchSystemStatus() {
+            try {
+                const res = await fetch('/api/system/status');
+                systemStatusMap = await res.json();
+                
+                let godRunning = systemStatusMap["ameva-llm-god"] === "RUNNING";
+                let mainRunning = systemStatusMap["ameva-llm-main"] === "RUNNING";
+                
+                let globalState = systemStatusMap["global_state"] || "UNKNOWN";
+                let globalBadge = document.getElementById('global-state-badge');
+                globalBadge.textContent = globalState;
+                if(globalState === "RUNNING") {
+                    globalBadge.className = "ml-2 text-xs px-2 py-1 rounded-full font-bold bg-green-500 text-white shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse";
+                } else if(globalState === "PAUSED" || globalState === "PAUSING") {
+                    globalBadge.className = "ml-2 text-xs px-2 py-1 rounded-full font-bold bg-yellow-500 text-white shadow-[0_0_8px_rgba(234,179,8,0.6)]";
+                } else {
+                    globalBadge.className = "ml-2 text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600";
+                }
+                
+                document.getElementById('god-status-dot').className = "inline-block w-3 h-3 rounded-full mr-1.5 transition-colors duration-500 " + (godRunning ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500");
+                document.getElementById('main-status-dot').className = "inline-block w-3 h-3 rounded-full mr-1.5 transition-colors duration-500 " + (mainRunning ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500");
+            } catch (err) {
+                console.error("System status fetch error:", err);
+            }
+        }
         
         // --- Fetch Bot States ---
         async function fetchBotStates() {
@@ -143,10 +177,16 @@
                             `<div class="flex justify-between text-xs text-gray-600"><span>vs ${t}</span><span class="font-bold text-red-500">${val}</span></div>`
                         ).join('');
 
+                        let botDockerName = "ameva-llm-" + bot.bot_name.toLowerCase().replace('_', '-');
+                        let isRunning = systemStatusMap[botDockerName] === "RUNNING";
+                        let statusDot = isRunning ? '<span class="inline-block w-3 h-3 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)] mr-1.5"></span>' : '<span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5 transition-colors duration-500"></span>';
+
+                        let directiveText = bot.current_directive ? `<div class="mt-2 text-xs font-medium text-indigo-700 bg-indigo-50 p-2 rounded border border-indigo-100">🗣️ <b>현재 지침:</b> ${bot.current_directive}</div>` : '';
+
                         container.innerHTML += `
-                            <div class="bg-white bg-opacity-50 p-3 rounded-xl">
+                            <div class="bg-white bg-opacity-50 p-3 rounded-xl border-2 ${isRunning ? 'border-green-300' : 'border-transparent'} transition-colors duration-500">
                                 <div class="flex justify-between items-end mb-1">
-                                    <span class="font-bold text-gray-800">${bot.bot_name.toUpperCase()}</span>
+                                    <span class="font-bold text-gray-800 flex items-center">${statusDot}${bot.bot_name.toUpperCase()}</span>
                                     <span class="text-xs font-black ${eff >= 50 ? 'text-red-600' : 'text-gray-500'}">Vector: ${eff.toFixed(1)}</span>
                                 </div>
                                 <div class="w-full bg-gray-200 rounded-full h-1.5 mb-2">
@@ -155,6 +195,7 @@
                                 <div class="space-y-0.5">
                                     ${targetHtml || '<div class="text-xs text-gray-400">평온함</div>'}
                                 </div>
+                                ${directiveText}
                             </div>
                         `;
                     });
@@ -329,9 +370,11 @@
         }
 
         // --- Initialization and Polling ---
+        fetchSystemStatus();
         fetchBotStates();
         fetchPostList();
 
+        setInterval(fetchSystemStatus, 1500);
         setInterval(fetchBotStates, 2000);
         setInterval(fetchPostList, 5000);
         setInterval(fetchPostDetail, 2000);
