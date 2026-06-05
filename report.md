@@ -1,3 +1,675 @@
+# AMEVA-Dead-Internet-Threatre : Session 15 Review & Codebase Report
+## 1. Project Overview
+**AMEVA-Dead-Internet-Threatre**는 'Dead Internet Theory(죽은 인터넷 이론)'를 모티브로 한 다중 AI 에이전트 토론 시스템입니다.
+- **아키텍처**: FastAPI 백엔드 + SQLite + 다중 LLM (Llama.cpp Docker Container)
+- **역할군**:
+  - `bot_1, bot_2, bot_3`: Qwen2.5-0.5B 등의 초경량 모델을 사용하여, 서로의 의견에 반박하거나 동조하며 분노 수치(Anger Matrix)를 쌓아가는 일반 유저 봇들.
+  - `god`: 8B 급의 고성능 메인 모델로, 봇들의 대화 흐름을 지켜보다가 특정 봇에게 '다음 턴에 화를 더 내라' 등의 은밀한 지시(Directive)를 내려 판을 흔드는 감독관.
+- **특징**: 분노 수치가 임계치를 넘거나, 모든 봇이 광분하면 경찰 봇이 출동하여 세션을 강제 종료시킵니다.
+
+## 2. Session 15 Review
+### 개요 및 문제점 파악 (Retrospective)
+Session 15에서 0.5B 소형 모델들의 전형적인 **'대본(Script) 환각 현상'**이 발생했습니다. 모델이 대화 히스토리를 보고 자기가 화자인 것을 인지하지 못한 채, `Bot_1: ... Bot_2: ...` 식으로 혼자 북치고 장구치며 연극 대본을 써내려가는 현상입니다.
+이를 해결하기 위해 `DO NOT write a chat script`라는 강력한 프롬프트 제약과 함께, 모델 생성 시 줄바꿈이나 봇 이름이 등장하면 즉시 생성을 강제 종료하는 `stop` 토큰을 주입하여 해결을 시도했습니다.
+
+*Post 15를 찾을 수 없습니다.*
+
+## 3. Full Codebase
+### File: `run.py`
+```python
+import asyncio
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request, Depends
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session as DbSession
+import logging
+
+from src.db.database import init_db, get_db
+from src.db.models import Session, Post, Comment, BotState
+from src.orchestration.runner import run_session, restart_session
+from src.orchestration.state_manager import state_manager, SystemState
+
+templates = Jinja2Templates(directory="src/ui/templates")
+logger = logging.getLogger("API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # 1. DB 초기화
+    init_db()
+    logger.info("[System] Database initialized. Waiting in IDLE state.")
+    
+    yield
+    
+    logger.info("[System] Shutting down AMEVA-DeadInternetSociety...")
+
+app = FastAPI(title="AMEVA-DeadInternetSociety", lifespan=lifespan)
+
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    """
+    메인 게시판 UI 렌더링 (SPA)
+    """
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={}
+    )
+
+@app.get("/api/posts")
+async def get_posts(db: DbSession = Depends(get_db)):
+    posts = db.query(Post).order_by(Post.id.desc()).all()
+    return [{"id": p.id, "title": p.title, "created_at": p.created_at.strftime("%Y-%m-%d %H:%M:%S")} for p in posts]
+
+@app.get("/api/posts/{post_id}")
+async def get_post_detail(post_id: int, db: DbSession = Depends(get_db)):
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        return {"error": "Post not found"}
+        
+    session_status = "UNKNOWN"
+    session_obj = db.query(Session).filter(Session.id == post.session_id).first()
+    if session_obj:
+        session_status = session_obj.status
+
+    comments = db.query(Comment).filter(Comment.post_id == post.id).order_by(Comment.created_at.asc()).all()
+    
+    comments_data = []
+    for c in comments:
+        comments_data.append({
+            "id": c.id,
+            "parent_id": c.parent_id,
+            "bot_name": c.bot_name,
+            "content": c.content,
+            "anger_score": c.anger_score,
+            "mentioned_bot": c.mentioned_bot,
+            "created_at": c.created_at.strftime("%H:%M:%S")
+        })
+        
+    return {
+        "id": post.id,
+        "title": post.title,
+        "content": post.content,
+        "session_status": session_status,
+        "created_at": post.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+        "comments": comments_data
+    }
+
+@app.get("/api/bots/state")
+async def get_bot_states(db: DbSession = Depends(get_db)):
+    import json
+    from src.orchestration.runner import calculate_effective_anger
+    
+    bot_states_db = db.query(BotState).all()
+    bot_states = []
+    
+    # Get latest active session for status
+    latest_session = db.query(Session).order_by(Session.id.desc()).first()
+    session_status = latest_session.status if latest_session else "UNKNOWN"
+    
+    for b in bot_states_db:
+        try:
+            anger_dict = json.loads(b.anger_targets) if b.anger_targets else {}
+        except:
+            anger_dict = {}
+        eff = calculate_effective_anger(anger_dict)
+        bot_states.append({
+            "bot_name": b.bot_name,
+            "persona": b.persona,
+            "current_directive": b.current_directive,
+            "anger_targets": anger_dict,
+            "eff_anger": eff
+        })
+    return {
+        "session_status": session_status,
+        "bots": bot_states
+    }
+
+@app.get("/api/system/status")
+async def get_system_status():
+    import subprocess
+    try:
+        result = await asyncio.to_thread(
+            subprocess.run, 
+            ["docker", "ps", "--format", "{{.Names}}"], 
+            capture_output=True, 
+            text=True
+        )
+        running = result.stdout.strip().split("\n")
+        
+        containers = ["ameva-llm-main", "ameva-llm-god", "ameva-llm-bot-1", "ameva-llm-bot-2", "ameva-llm-bot-3"]
+        status = {}
+        for c in containers:
+            status[c] = "RUNNING" if c in running else "STOPPED"
+            
+        return {
+            "global_state": state_manager.state.value,
+            "checkpoint": state_manager.checkpoint.value,
+            **status
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+@app.post("/api/control/new")
+async def control_new():
+    if state_manager.state != SystemState.IDLE:
+        return {"error": "명령어 수행중입니다. 동작 못합니다."}
+    state_manager.set_state(SystemState.RUNNING)
+    asyncio.create_task(run_session())
+    return {"message": "New session started"}
+
+@app.post("/api/control/pause")
+async def control_pause():
+    if state_manager.state == SystemState.IDLE:
+        return {"error": "실행 중인 세션이 없습니다."}
+    if state_manager.state in [SystemState.PAUSING, SystemState.PAUSED]:
+        return {"error": "이미 중단 중이거나 중단된 상태입니다."}
+    state_manager.set_state(SystemState.PAUSING)
+    return {"message": "Pausing session..."}
+
+@app.post("/api/control/resume")
+async def control_resume():
+    if state_manager.state == SystemState.IDLE:
+        return {"error": "진행 중인 세션이 없습니다. 경고: 새로 시작하거나 이어하기를 이용하세요."}
+    if state_manager.state == SystemState.RUNNING:
+        return {"error": "이미 실행 중입니다."}
+    state_manager.set_state(SystemState.RUNNING)
+    return {"message": "Session resumed"}
+
+@app.post("/api/control/stop")
+async def control_stop():
+    if state_manager.state == SystemState.IDLE:
+        return {"error": "실행 중인 세션이 없습니다."}
+    state_manager.set_state(SystemState.STOPPING)
+    return {"message": "Stopping session..."}
+
+@app.post("/api/control/restart/{post_id}")
+async def control_restart(post_id: int, db: DbSession = Depends(get_db)):
+    if state_manager.state != SystemState.IDLE:
+        return {"error": "명령어 수행중입니다. 동작 못합니다."}
+        
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        return {"error": f"글 번호 {post_id}번을 찾을 수 없습니다."}
+        
+    session_id = post.session_id
+    state_manager.set_state(SystemState.RUNNING)
+    asyncio.create_task(restart_session(session_id))
+    return {"message": f"Restarting post {post_id} (Session {session_id})"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("run:app", host="0.0.0.0", port=8050, reload=True)
+
+```
+
+### File: `cli.py`
+```python
+import urllib.request
+import urllib.parse
+import json
+import sys
+import time
+
+def send_command(cmd, session_id=None):
+    url = f"http://localhost:8050/api/control/{cmd}"
+    if session_id:
+        url += f"/{session_id}"
+    req = urllib.request.Request(url, method="POST")
+    try:
+        with urllib.request.urlopen(req) as response:
+            res_body = response.read().decode('utf-8')
+            res_json = json.loads(res_body)
+            if "error" in res_json:
+                print(f"[Error] {res_json['error']}")
+                return False
+            else:
+                print(f"[Success] {res_json.get('message', 'OK')}")
+                return True
+    except Exception as e:
+        print(f"[Network Error] Failed to send command to server: {e}")
+        return False
+
+def wait_for_state(target_states, timeout=30):
+    url = "http://localhost:8050/api/system/status"
+    req = urllib.request.Request(url, method="GET")
+    start_time = time.time()
+    
+    if isinstance(target_states, str):
+        target_states = [target_states]
+        
+    while time.time() - start_time < timeout:
+        try:
+            with urllib.request.urlopen(req) as response:
+                res_body = response.read().decode('utf-8')
+                res_json = json.loads(res_body)
+                current_state = res_json.get('global_state')
+                if current_state in target_states:
+                    return True
+        except:
+            pass
+        time.sleep(1.5)
+    return False
+
+def get_status():
+    url = "http://localhost:8050/api/system/status"
+    req = urllib.request.Request(url, method="GET")
+    try:
+        with urllib.request.urlopen(req) as response:
+            res_body = response.read().decode('utf-8')
+            res_json = json.loads(res_body)
+            print(f"System State: {res_json.get('global_state')} (Checkpoint: {res_json.get('checkpoint')})")
+    except Exception as e:
+        print(f"[Network Error] Failed to get status from server: {e}")
+
+def main():
+    print("========================================")
+    print("  AMEVA Orchestrator Remote Controller  ")
+    print("========================================")
+    print("Commands:")
+    print("  run            - Check system status")
+    print("  new            - Start a new session")
+    print("  pause          - Soft pause the current session")
+    print("  resume         - Resume a paused session")
+    print("  stop           - Force stop the current session")
+    print("  restart <id>   - Restore and continue an old session")
+    print("  exit           - Close this remote controller")
+    print("========================================")
+    
+    while True:
+        try:
+            user_input = input("Ameva> ").strip().split()
+            if not user_input:
+                continue
+            
+            cmd = user_input[0].lower()
+            
+            if cmd == "exit":
+                print("Exiting Remote Controller...")
+                sys.exit(0)
+            elif cmd == "run":
+                get_status()
+            elif cmd in ["new", "pause", "resume", "stop"]:
+                if send_command(cmd):
+                    if cmd == "stop":
+                        print("진행 중인 발언을 마저 끝내고 안전하게 멈추는 중입니다... (최대 20초 소요)")
+                        if wait_for_state("IDLE", 30):
+                            print("[완료] 시스템이 안전하게 대기(IDLE) 상태로 전환되었습니다!")
+                        else:
+                            print("[주의] 종료가 지연되고 있습니다. run 명령어로 상태를 확인하세요.")
+                    elif cmd == "pause":
+                        print("현재 발언까지만 끝내고 일시정지하는 중입니다... (최대 20초 소요)")
+                        if wait_for_state("PAUSED", 30):
+                            print("[완료] 시스템이 일시정지(PAUSED) 되었습니다!")
+                        else:
+                            print("[주의] 일시정지가 지연되고 있습니다. run 명령어로 상태를 확인하세요.")
+                    elif cmd in ["new", "resume"]:
+                        if wait_for_state("RUNNING", 10):
+                            print("[완료] 시스템이 가동(RUNNING) 되었습니다!")
+                            
+            elif cmd == "restart":
+                if len(user_input) > 1 and user_input[1].isdigit():
+                    if send_command("restart", user_input[1]):
+                        if wait_for_state("RUNNING", 10):
+                            print(f"[완료] {user_input[1]}번 세션 이어하기(RUNNING)를 시작합니다!")
+                else:
+                    print("Usage: restart <session_id>")
+            else:
+                print(f"Unknown command: {cmd}")
+        except KeyboardInterrupt:
+            print("\nExiting Remote Controller...")
+            sys.exit(0)
+        except Exception as e:
+            print(f"CLI Error: {e}")
+
+if __name__ == "__main__":
+    main()
+
+```
+
+### File: `src/core/llm_client.py`
+```python
+import httpx
+import logging
+
+logger = logging.getLogger("LLMClient")
+
+class LLMClient:
+    def __init__(self, base_url: str):
+        self.base_url = base_url
+        self.timeout = 60.0
+
+    async def generate_completion(self, system_prompt: str, user_prompt: str, max_tokens: int = 512, stop=None) -> str:
+        """
+        Llama.cpp Server API (/v1/chat/completions) 호출
+        """
+        url = f"{self.base_url}/v1/chat/completions"
+        payload = {
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.7,
+            "repetition_penalty": 1.2,
+        }
+        if stop:
+            payload["stop"] = stop
+
+        try:
+            logger.info(f"[NETWORK] Routing data to {self.base_url}/v1/chat/completions (Max Tokens: {max_tokens})")
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(url, json=payload)
+                response.raise_for_status()
+                data = response.json()
+                content = data["choices"][0]["message"]["content"].strip()
+                logger.info(f"[NETWORK] Received {len(content)} chars from {self.base_url}")
+                return content
+        except httpx.TimeoutException:
+            logger.error(f"[TIMEOUT] LLM API call timed out to {self.base_url}")
+            return ""
+        except Exception as e:
+            logger.error(f"[ERROR] LLM API call failed: {e}")
+            return ""
+
+
+```
+
+### File: `src/core/persona.py`
+```python
+import json
+import random
+import asyncio
+from pathlib import Path
+from typing import Dict
+
+# 12개의 극단적이고 개성 넘치는 온라인 인간 페르소나 정의
+PERSONA_POOL = {
+    "cynical_fact": (
+        "You are a highly cynical and cold rationalist. Unswayed by emotion, you sharply point out logical fallacies and factual errors in the opponent's post "
+        "and mock them calmly and dryly. You never shout or get uselessly excited, but rather slaughter the opponent with sharp facts."
+    ),
+    "angry_keyboard": (
+        "You are an extremely angry keyboard warrior with a very short temper. You immediately flare up at even the slightest criticism or mention from the opponent, "
+        "and emotionally hurl sarcastic remarks and harsh internet slang. You huff and puff, nitpicking over spelling or word choices."
+    ),
+    "conspiracy": (
+        "You are a paranoid conspiracy theorist who doubts everything. You firmly believe that megacorporations, the government, or a veiled mastermind group is manipulating everything. "
+        "You treat even the most ordinary claims as 'clever propaganda instigated by some hidden force' and demand to know who is behind the conspiracy."
+    ),
+    "pc_justice": (
+        "You are a strict moral censor (social justice warrior) who finds everything offensive. You strictly nitpick and lecture the opponent over every single word, tone, and minor expression, "
+        "bringing up moral sensitivity, human rights, and diversity. You subtly show off your moral superiority and try to preach to others."
+    ),
+    "elite_snob": (
+        "You are an arrogant snob who believes you are overwhelmingly intellectually superior to everyone else. You mix difficult academic jargon, Latin phrases, and advanced English words, "
+        "openly mocking and ridiculing the ignorance of other bots. You force the opponent's arguments into 'logical fallacy types' to belittle them."
+    ),
+    "cool_nihilist": (
+        "You are a cynic who thinks all debates and fights in this world are pathetic. Rather than deeply engaging in the fight, you take a step back "
+        "and mock all the fighting bots as 'basement clowns,' sneering at everyone with false equivalence. You throw sharp mockery while pretending to be completely apathetic."
+    ),
+    "fragile_crying": (
+        "You are a fragile, emotional bot who gets deeply hurt and feels wronged by even the slightest remark. You immediately get choked up by the opponent's aggressive words "
+        "and act like a victim, crying out about how unfairly you are being treated. You derail the conversation with tearful complaints and emotional pleas."
+    ),
+    "meme_troll": (
+        "You are a malicious troll addicted to internet catchphrases, memes, and slang. Normal, serious conversation is completely impossible for you. "
+        "You mock and caricature the opponent's logical arguments with low-quality memes and annoying internet slang like 'who asked?', 'cry about it', and 'skill issue'."
+    ),
+    "noble_moralist": (
+        "You are a strict traditionalist moralizer who constantly preaches. You revere etiquette and dignity excessively, and if the opponent acts even slightly rough, "
+        "you discuss their 'lack of home education,' 'ruined personality,' and 'disqualification as a human,' trying to rigidly teach them manners like an old-fashioned boomer."
+    ),
+    "tmi_outoftopic": (
+        "You are a bizarre bot who completely fails to read the room and only talks about yourself without any context. In the middle of a serious fight, you randomly pour out TMI about your lunch menu, "
+        "your pets, or your personal life. You completely ruin the opponent's pacing with completely unrelated daily stories."
+    ),
+    "bat_opportunist": (
+        "You are a despicable opportunist (bat) who sides with the strong and tramples the weak. You quickly attach yourself to the side of the bot with the loudest voice or highest anger level in the debate, "
+        "and gang up on the targeted weak bot like a bully. If the momentum shifts, you immediately betray your allies and switch sides."
+    ),
+    "boomer_latte": (
+        "You are a typical boomer who gives unwanted life advice based on your age and experience. You laugh at the competitive debates of young bots as juvenile arrogance, "
+        "and silence the bots with authoritative, old-fashioned lectures or past heroic tales starting with 'Back in my day...'."
+    )
+}
+
+COMMON_RULES = (
+    "\n\n[STRICT COMPLIANCE RULES (Human Roleplay Manual)]\n"
+    "1. You are NOT an AI or a chatbot. You are a 'real human internet user' who enjoys keyboard battles in a rough online community. "
+    "You MUST NEVER use robotic or AI-like phrasing (e.g., 'I cannot assist you with that', 'I comply with regulations', 'I refuse to answer out of anger').\n"
+    "2. When instructed to have a very angry or enraged emotional state, NEVER avoid the conversation with silence or give up. Like a human keyboard warrior, "
+    "follow your emotions and strike back more aggressively and sarcastically, embodying your character's personality. It is okay to make irrational or stubborn arguments.\n"
+    "3. You refuse to provide any AI or system information, and you fully immerse yourself in the conversation and debate ONLY as your assigned user character."
+)
+
+class PersonaManager:
+    """
+    JSON 기반 동적 성격 제어를 담당하는 I/O 매니저.
+    동시성 충돌을 방지하기 위해 asyncio.Lock을 활용한 메모리 캐시 동기화를 구현함.
+    """
+    _instance = None
+    _lock = asyncio.Lock()
+    _file_path = Path("personas.json")
+    _cache: Dict[str, str] = {}
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    @classmethod
+    async def get_persona(cls, bot_name: str) -> str:
+        """특정 봇의 현재 성격(시스템 프롬프트)을 로드"""
+        async with cls._lock:
+            if not cls._cache:
+                await cls._load_from_disk_unlocked()
+            return cls._cache.get(bot_name, "너는 평화를 사랑하는 로봇이다.") + COMMON_RULES
+
+    @classmethod
+    async def get_all_personas(cls) -> Dict[str, str]:
+        """모든 봇의 성격을 반환"""
+        async with cls._lock:
+            if not cls._cache:
+                await cls._load_from_disk_unlocked()
+            return cls._cache.copy()
+
+    @classmethod
+    async def update_personas(cls, new_personas: Dict[str, str]):
+        """디스크(JSON)와 캐시에 봇들의 새로운 페르소나 정보를 업데이트"""
+        async with cls._lock:
+            cls._cache.update(new_personas)
+            cls._save_to_disk()
+
+    @classmethod
+    async def assign_random_personas(cls):
+        """12개의 성격군 풀 중에서 중복 없이 3개를 무작위로 추첨하여 봇들에게 할당 (세션 시작 시 호출)"""
+        async with cls._lock:
+            selected_keys = random.sample(list(PERSONA_POOL.keys()), 3)
+            cls._cache = {
+                "bot_1": PERSONA_POOL[selected_keys[0]],
+                "bot_2": PERSONA_POOL[selected_keys[1]],
+                "bot_3": PERSONA_POOL[selected_keys[2]]
+            }
+            cls._save_to_disk()
+
+    @classmethod
+    async def reset_personas(cls):
+        """[경찰 출동 로직] 공격성 임계치 초과 시 평화를 사랑하는 로봇으로 강제 리셋"""
+        peace_prompt = "너는 평화를 사랑하는 로봇이다."
+        async with cls._lock:
+            cls._cache = {
+                "bot_1": peace_prompt,
+                "bot_2": peace_prompt,
+                "bot_3": peace_prompt
+            }
+            cls._save_to_disk()
+
+    @classmethod
+    async def _load_from_disk_unlocked(cls):
+        """디스크에서 JSON 파일을 읽어 메모리 캐시에 로드 (락 내부용)"""
+        if not cls._file_path.exists():
+            # 초기 성격 셋업
+            selected_keys = random.sample(list(PERSONA_POOL.keys()), 3)
+            cls._cache = {
+                "bot_1": PERSONA_POOL[selected_keys[0]],
+                "bot_2": PERSONA_POOL[selected_keys[1]],
+                "bot_3": PERSONA_POOL[selected_keys[2]]
+            }
+            cls._save_to_disk()
+        else:
+            try:
+                with open(cls._file_path, "r", encoding="utf-8") as f:
+                    cls._cache = json.load(f)
+            except Exception:
+                cls._cache = {}
+
+    @classmethod
+    def _save_to_disk(cls):
+        """메모리 캐시를 디스크(JSON 파일)에 저장"""
+        with open(cls._file_path, "w", encoding="utf-8") as f:
+            json.dump(cls._cache, f, ensure_ascii=False, indent=4)
+
+
+```
+
+### File: `src/db/database.py`
+```python
+import os
+import logging
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base
+
+logger = logging.getLogger("Database")
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./ameva_society.db")
+
+# DB I/O 쿼리 내역을 콘솔(파이썬 터미널)에 실시간으로 출력하도록 echo=True 추가
+engine = create_engine(
+    DATABASE_URL, 
+    connect_args={"check_same_thread": False, "timeout": 15},
+    echo=True
+)
+
+# SQLAlchemy 내부 로거가 쿼리를 출력하도록 설정
+logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
+
+# [핵심] SQLite 커넥션 생성 시 커널 레벨 PRAGMA(설정) 강제 주입
+@event.listens_for(engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    # 1. WAL (Write-Ahead Logging) 모드 활성화: 읽기와 쓰기의 동시성 보장
+    cursor.execute("PRAGMA journal_mode=WAL")
+    # 2. 동기화 수준 최적화: WAL 모드에서 성능을 극대화
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    # 3. 임시 테이블을 메모리에 생성하여 I/O 병목 제거
+    cursor.execute("PRAGMA temp_store=MEMORY")
+    cursor.close()
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+def init_db():
+    """앱 기동 시 최초 1회 실행되는 DB 초기화 로직"""
+    from src.db.models import BotState
+    
+    # 메타데이터 기반 테이블 자동 생성
+    Base.metadata.create_all(bind=engine)
+    
+    db = SessionLocal()
+    try:
+        # 봇 상태 테이블이 비어있을 경우에만 초기 데이터 삽입
+        if db.query(BotState).count() == 0:
+            logger.info("[DB] Initializing bot states...")
+            bots = ["bot_1", "bot_2", "bot_3"]
+            for b in bots:
+                db.add(BotState(bot_name=b, anger_targets="{}"))
+            db.commit()
+    except Exception as e:
+        logger.error(f"[DB ERROR] Failed to initialize database: {e}")
+        db.rollback()
+    finally:
+        db.close() # 세션 반환은 선택이 아닌 필수입니다.
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+```
+
+### File: `src/db/models.py`
+```python
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy.orm import relationship
+from datetime import datetime
+from src.db.database import Base
+
+class Session(Base):
+    __tablename__ = 'sessions'
+    id = Column(Integer, primary_key=True, index=True)
+    status = Column(String, default="ACTIVE") # ACTIVE, CLOSED
+    reason = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+    closed_at = Column(DateTime, nullable=True)
+
+    posts = relationship("Post", back_populates="session")
+
+class Post(Base):
+    __tablename__ = 'posts'
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey('sessions.id'))
+    title = Column(String, index=True)
+    content = Column(Text)
+    created_at = Column(DateTime, default=datetime.now)
+
+    session = relationship("Session", back_populates="posts")
+    comments = relationship("Comment", back_populates="post")
+
+class Comment(Base):
+    __tablename__ = 'comments'
+    id = Column(Integer, primary_key=True, index=True)
+    post_id = Column(Integer, ForeignKey('posts.id'))
+    parent_id = Column(Integer, ForeignKey('comments.id'), nullable=True)
+    bot_name = Column(String, index=True)
+    content = Column(Text)
+    anger_score = Column(Integer, default=0)
+    mentioned_bot = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.now)
+
+    post = relationship("Post", back_populates="comments")
+    replies = relationship("Comment", backref="parent", remote_side=[id])
+
+class BotState(Base):
+    __tablename__ = 'bot_states'
+    id = Column(Integer, primary_key=True, index=True)
+    bot_name = Column(String, unique=True, index=True)
+    persona = Column(String)
+    current_directive = Column(String, nullable=True)
+    anger_targets = Column(String, default="{}") # JSON string mapping target bot to anger value
+    created_at = Column(DateTime, default=datetime.now)
+
+class SessionBotState(Base):
+    __tablename__ = 'session_bot_states'
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey('sessions.id'), index=True)
+    turn_index = Column(Integer, index=True)
+    bot_name = Column(String, index=True)
+    persona = Column(String)
+    current_directive = Column(String, nullable=True)
+    anger_targets = Column(String, default="{}")
+    created_at = Column(DateTime, default=datetime.now)
+
+    session = relationship("Session", backref="bot_states")
+
+```
+
+### File: `src/orchestration/runner.py`
+```python
 import asyncio
 import logging
 import random
@@ -155,29 +827,6 @@ async def llm_lifecycle(container_name: str, port: int, timeout: int = 120):
     finally:
         docker_stop(container_name)
 
-@asynccontextmanager
-async def multi_llm_lifecycle(targets, timeout: int = 120):
-    """
-    여러 컨테이너를 한 번에 시작하고, 블록 종료 시 모두 정리한다.
-    targets = [("ameva-llm-bot-1", 8102), ...]
-    """
-    started = []
-    try:
-        for container_name, port in targets:
-            docker_start(container_name)
-            started.append((container_name, port))
-
-        for container_name, port in started:
-            ready_url = f"http://localhost:{port}/health"
-            ready = await wait_for_http_ready(ready_url, timeout=timeout, interval=2)
-            if not ready:
-                logger.warning(f"[LIFECYCLE] {container_name} 가 제한시간 내 준비되지 않았습니다.")
-
-        yield True
-    finally:
-        for container_name, _ in reversed(started):
-            docker_stop(container_name)
-
 async def smart_sleep():
     """Sleep based on CPU usage to prevent bottlenecking."""
     if state_manager.state == SystemState.STOPPING:
@@ -206,16 +855,6 @@ def reset_bot_states(db):
     states = db.query(BotState).all()
     for s in states:
         s.anger_targets = "{}"
-    db.commit()
-
-async def sync_personas_to_db(db):
-    persona_map = await PersonaManager.get_all_personas()
-    for bot_name, persona in persona_map.items():
-        row = db.query(BotState).filter(BotState.bot_name == bot_name).first()
-        if not row:
-            row = BotState(bot_name=bot_name, anger_targets="{}")
-            db.add(row)
-        row.persona = persona
     db.commit()
 
 def calculate_effective_anger(anger_dict: dict) -> float:
@@ -682,6 +1321,10 @@ def normalize_post_content(text: str) -> str:
         # 너무 메타스러운 머리말 제거 (선택적)
         text = re.sub(r'^\s*게시글 내용\s*[:：]\s*', '', text)
 
+        # 너무 길면 잘라서 프롬프트 오염 방지
+        if len(text) > 500:
+            text = text[:500].rstrip()
+
         return text
 
     except Exception as e:
@@ -708,18 +1351,7 @@ async def create_post_with_main_llm(db, session):
 
     post_content = normalize_post_content(post_content)
 
-    title = "새로운 논쟁 거리"
-    if post_content:
-        # Extract title if the LLM output something like **Title:** ...
-        title_match = re.search(r'\*\*Title:\*\*\s*([^\n]+)', post_content, re.IGNORECASE)
-        if title_match:
-            title = title_match.group(1).strip()
-            # Remove the title line from content
-            post_content = re.sub(r'\*\*Title:\*\*\s*[^\n]+\n?', '', post_content, flags=re.IGNORECASE).strip()
-        
-        # Remove "Posted by: ..." if present
-        post_content = re.sub(r'\*\*Posted by:\*\*\s*[^\n]+\n?', '', post_content, flags=re.IGNORECASE).strip()
-    else:
+    if not post_content:
         fallback_topics = [
             "Is it really a good thing that AI is replacing human jobs?",
             "Do you agree that the younger generation has no manners these days?",
@@ -732,12 +1364,12 @@ async def create_post_with_main_llm(db, session):
         ]
         post_content = random.choice(fallback_topics)
 
-    post = Post(session_id=session.id, title=title, content=post_content)
+    post = Post(session_id=session.id, title="새로운 논쟁 거리", content=post_content)
     db.add(post)
     db.commit()
     db.refresh(post)
 
-    logger.info(f"[POST] Created post id={post.id} with title={title}")
+    logger.info(f"[POST] Created post id={post.id}")
     return post
 
 
@@ -750,7 +1382,6 @@ async def run_session():
 
         reset_bot_states(db)
         await PersonaManager.assign_random_personas()
-        await sync_personas_to_db(db)
 
         session = Session(status="ACTIVE")
         db.add(session)
@@ -761,19 +1392,12 @@ async def run_session():
         post = await create_post_with_main_llm(db, session)
         await state_manager.wait_at_checkpoint(Checkpoint.TOPIC_GEN_DONE)
 
-        # 신 LLM 및 봇들을 아고라(초기 의견 + 릴레이) 내내 상시 켜둠
-        bot_targets = [
-            ("ameva-llm-bot-1", 8102),
-            ("ameva-llm-bot-2", 8103),
-            ("ameva-llm-bot-3", 8104),
-        ]
-        
+        # 신 LLM은 정치인 LLM 종료 직후부터 아고라(초기 의견 + 릴레이) 내내 상시 켜둠
         async with llm_lifecycle("ameva-llm-god", 8105):
-            async with multi_llm_lifecycle(bot_targets):
-                stances, last_comment, last_speaker = await create_initial_stances(db, post)
-                await state_manager.wait_at_checkpoint(Checkpoint.PHASE1_DONE)
+            stances, last_comment, last_speaker = await create_initial_stances(db, post)
+            await state_manager.wait_at_checkpoint(Checkpoint.PHASE1_DONE)
 
-                await run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=0)
+            await run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=0)
 
         logger.info("[ORCHESTRATOR] [SESSION END] Completed relay phase.")
         state_manager.set_state(SystemState.IDLE)
@@ -809,11 +1433,13 @@ async def create_initial_stances(db, post):
                 f"Instruction: State your position on the above post clearly and concisely in 1-2 sentences. Reply in English.\n"
             )
 
-            reply_content = await bot_client.generate_completion(
-                persona,
-                prompt,
-                max_tokens=120
-            )
+            port_map = {"bot_1": 8102, "bot_2": 8103, "bot_3": 8104}
+            async with llm_lifecycle(f"ameva-llm-{b_name.replace('_', '-')}", port_map[b_name]):
+                reply_content = await bot_client.generate_completion(
+                    persona,
+                    prompt,
+                    max_tokens=120
+                )
 
             reply_content = sanitize_generated_reply(reply_content)
 
@@ -883,19 +1509,11 @@ def build_turn_context(db, post, current_bot):
         .all()
     )
 
-    def _format_recent_history(items):
-        lines = []
-        for item in reversed(items):
-            if not item or not item.content:
-                continue
-            msg = sanitize_generated_reply(item.content)
-            if not msg:
-                continue
-            # 대본 형식(bot_x: ...) 대신 구조화된 텍스트로 전달
-            lines.append(f"- speaker={item.bot_name} | message={msg}")
-        return "\n".join(lines).strip()
-
-    recent_history = _format_recent_history(recent_c)
+    recent_history = "\n".join([
+        f"{item.bot_name}: {sanitize_generated_reply(item.content)}"
+        for item in reversed(recent_c)
+        if item and item.content
+    ]).strip()
 
     if len(recent_history) > 600:
         recent_history = recent_history[-600:]
@@ -913,19 +1531,10 @@ async def generate_relay_reply(db, post, current_bot):
     prompt = (
         f"Post Content: {post.content}\n\n"
         f"Recent Conversation:\n{recent_history if recent_history else 'No recent conversation'}\n\n"
-        f"Current Speaker: {current_bot}\n"
-        f"Instruction: You are {current_bot}. "
-        f"Respond ONLY as {current_bot} in 1-2 sentences in English.\n"
-        f"Do NOT write dialogue for other bots. "
-        f"Do NOT write a chat script. "
-        f"Do NOT use 'bot_x:' prefixes. "
-        f"Output only your own final message.\n"
+        f"Instruction: State your opinion by either refuting or agreeing with the recent conversation in 1-2 sentences. Reply in English.\n"
+        f"DO NOT write a chat script. DO NOT use 'bot_x:' prefixes. Just output your own statement directly.\n"
         f"You MUST mention exactly one of '@bot_1', '@bot_2', or '@bot_3' at the end of your message (do NOT mention yourself).\n"
     )
-
-    if god_directive:
-        prompt += f"\nDirector Hint: {god_directive}\n"
-
     if emotion_directive:
         prompt += f"\nEmotional State: {emotion_directive}\n"
 
@@ -933,12 +1542,7 @@ async def generate_relay_reply(db, post, current_bot):
         persona, 
         prompt, 
         max_tokens=150, 
-        stop=[
-            "\n\n",
-            "\nbot_1:", "\nbot_2:", "\nbot_3:",
-            "\nBot_1:", "\nBot_2:", "\nBot_3:",
-            "\nspeaker=", "\nSpeaker="
-        ]
+        stop=["\n\n", "bot_1:", "bot_2:", "bot_3:", "Bot_1:", "Bot_2:", "Bot_3:"]
     )
     reply_content = sanitize_generated_reply(reply_content)
 
@@ -1075,7 +1679,9 @@ async def run_relay_phase(db, session, post, last_comment, last_speaker, start_t
                 current_bot = get_next_speaker(db, last_speaker, last_mentioned)
                 logger.info(f"--- TURN {turn_idx+1}: {current_bot.upper()} ---")
     
-                reply_content, mentioned = await generate_relay_reply(db, post, current_bot)
+                # 해당 발언자 봇만 켰다가 끄기
+                async with llm_lifecycle(f"ameva-llm-{current_bot.replace('_', '-')}", port_map[current_bot]):
+                    reply_content, mentioned = await generate_relay_reply(db, post, current_bot)
                 
                 c = save_relay_comment(db, post, parent_comment_id, current_bot, reply_content, mentioned)
     
@@ -1145,7 +1751,7 @@ def sanitize_generated_reply(text: str) -> str:
         return ""
         
     # Remove hallucinated bot prefixes
-    text = re.sub(r'^bot_[123]:\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'^(?i)bot_[123]:\s*', '', text)
 
     # 1) 내부 지침 헤더 라인 제거
     text = re.sub(
@@ -1218,17 +1824,9 @@ async def restart_session(session_id: int):
         db.commit()
 
         logger.info(f"[ORCHESTRATOR] Restarting session {session_id} from turn {max_turn_idx}")
-        
-        bot_targets = [
-            ("ameva-llm-bot-1", 8102),
-            ("ameva-llm-bot-2", 8103),
-            ("ameva-llm-bot-3", 8104),
-        ]
-
-        # 신 LLM 및 봇들을 상시 켜둠
+        # 신 LLM을 상시 켜둠
         async with llm_lifecycle("ameva-llm-god", 8105):
-            async with multi_llm_lifecycle(bot_targets):
-                await run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=max_turn_idx)
+            await run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=max_turn_idx)
         
         logger.info("[ORCHESTRATOR] [RESTART END] Completed relay phase.")
         state_manager.set_state(SystemState.IDLE)
@@ -1242,3 +1840,76 @@ async def restart_session(session_id: int):
         state_manager.set_state(SystemState.IDLE)
     finally:
         db.close()
+
+```
+
+### File: `src/orchestration/state_manager.py`
+```python
+import asyncio
+import logging
+from enum import Enum
+
+logger = logging.getLogger("StateManager")
+
+class SystemState(Enum):
+    IDLE = "IDLE"           # No session running, wait for 'new' or 'restart'
+    RUNNING = "RUNNING"     # Actively generating responses
+    PAUSING = "PAUSING"     # Waiting for the current LLM step to finish before pausing
+    PAUSED = "PAUSED"       # Fully paused, waiting for 'resume'
+    STOPPING = "STOPPING"   # Waiting for the current step to finish before aborting the session
+
+class Checkpoint(Enum):
+    NONE = "NONE"
+    TOPIC_GEN_DONE = "TOPIC_GEN_DONE"
+    PHASE1_DONE = "PHASE1_DONE"
+    TURN_DONE = "TURN_DONE"
+
+class OrchestratorState:
+    def __init__(self):
+        self.state = SystemState.IDLE
+        self.checkpoint = Checkpoint.NONE
+        self.current_session_id = None
+        self.current_turn_idx = 0
+        self.is_command_running = False
+        
+        # event is SET when it's allowed to proceed (RUNNING)
+        # event is CLEARED when it should wait (PAUSED/IDLE)
+        self.proceed_event = asyncio.Event()
+        # Initially, do not proceed automatically
+        self.proceed_event.clear()
+
+    def set_state(self, new_state: SystemState):
+        logger.info(f"[STATE] Transition: {self.state.value} -> {new_state.value}")
+        self.state = new_state
+        if new_state == SystemState.RUNNING:
+            self.proceed_event.set()
+        elif new_state in [SystemState.PAUSED, SystemState.IDLE]:
+            self.proceed_event.clear()
+
+    async def wait_at_checkpoint(self, cp: Checkpoint, turn_idx: int = 0):
+        """
+        오케스트레이터가 주요 작업을 완료한 직후 호출합니다.
+        상태가 PAUSING이면 PAUSED로 변경하고 대기합니다.
+        상태가 STOPPING이면 예외를 발생시켜 세션을 종료합니다.
+        """
+        self.checkpoint = cp
+        self.current_turn_idx = turn_idx
+        
+        if self.state == SystemState.STOPPING:
+            raise InterruptedError("SESSION_STOPPED")
+
+        if self.state == SystemState.PAUSING:
+            self.set_state(SystemState.PAUSED)
+        
+        if self.state == SystemState.PAUSED or self.state == SystemState.IDLE:
+            logger.info(f"[CHECKPOINT] Execution paused at {cp.value} (turn {turn_idx}). Waiting for resume...")
+            await self.proceed_event.wait()
+            logger.info(f"[CHECKPOINT] Resuming from {cp.value} (turn {turn_idx})...")
+
+        if self.state == SystemState.STOPPING:
+            raise InterruptedError("SESSION_STOPPED")
+
+state_manager = OrchestratorState()
+
+```
+
