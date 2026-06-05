@@ -918,6 +918,7 @@ async def generate_relay_reply(db, post, current_bot, turn_idx=0):
     # [LPDE Feature Flags]
     LPDE_STRUCTURED_HISTORY = os.getenv("LPDE_STRUCTURED_HISTORY", "true").lower() == "true"
     LPDE_FULL_PROMPT = os.getenv("LPDE_FULL_PROMPT", "false").lower() == "true"
+    LPDE_LEGACY_PROMPT = os.getenv("LPDE_LEGACY_PROMPT", "false").lower() == "true"
 
     # [LPDE Phase 1A] Shadow Mode Update
     from src.core.personality_engine import personality_engine
@@ -929,14 +930,23 @@ async def generate_relay_reply(db, post, current_bot, turn_idx=0):
     god_directive = await generate_director_directive(db, current_bot, recent_history, eff_anger)
 
     if LPDE_FULL_PROMPT:
-        # Phase 1B: 추후 PromptAdapter를 활용해 완전히 구조화된 LPDE 프롬프트 생성
+        # Phase 1B Placeholder: 추후 PromptAdapter를 활용해 완전히 구조화된 LPDE 프롬프트 생성 (현재는 임시 기능)
         prompt = (
             f"Post Content: {post.content}\n\n"
             f"{recent_history if recent_history else 'No recent conversation'}\n\n"
             f"[System] You are {current_bot}. Respond to the above conversation based on your internal LPDE state.\n"
         )
+    elif LPDE_LEGACY_PROMPT:
+        # 진짜 legacy prompt 유지 (Shadow Mode 비교용)
+        prompt = (
+            f"Post Content: {post.content}\n\n"
+            f"Recent Conversation:\n{recent_history if recent_history else 'No recent conversation'}\n\n"
+            f"Instruction: State your opinion by either refuting or agreeing with the recent conversation in 1-2 sentences. Reply in English.\n"
+            f"DO NOT write a chat script. DO NOT use 'bot_x:' prefixes. Just output your own statement directly.\n"
+            f"You MUST mention exactly one of '@bot_1', '@bot_2', or '@bot_3' at the end of your message (do NOT mention yourself).\n"
+        )
     else:
-        # Phase 1A: 기존 프롬프트 구조 유지 (Shadow Mode)
+        # Phase 1A: 구조 강화된 prompt (shadow mode + hardening)
         prompt = (
             f"Post Content: {post.content}\n\n"
             f"Recent Conversation:\n{recent_history if recent_history else 'No recent conversation'}\n\n"
@@ -964,7 +974,8 @@ async def generate_relay_reply(db, post, current_bot, turn_idx=0):
             "\n\n",
             "\nbot_1:", "\nbot_2:", "\nbot_3:",
             "\nBot_1:", "\nBot_2:", "\nBot_3:",
-            "\nspeaker=", "\nSpeaker="
+            "\nspeaker=", "\nSpeaker=",
+            "\n- speaker="
         ]
     )
     reply_content = sanitize_generated_reply(reply_content)
@@ -1148,10 +1159,12 @@ def force_single_mention(text: str, current_bot: str) -> tuple[str, str]:
         chosen = random.choice(candidates) if candidates else "bot_1"
         return f"@{chosen}", chosen
 
-    matches = re.findall(r'@(bot_[123])(?!\d)', text, flags=re.IGNORECASE)
-    matches = [m.lower() for m in matches if m.lower() != current_bot]
+    matches = re.findall(r'@(bot_\[?[123]\]?)(?!\d)', text, flags=re.IGNORECASE)
+    # Normalize bot name by removing brackets for comparison
+    matches = [re.sub(r'[\[\]]', '', m).lower() for m in matches]
+    matches = [m for m in matches if m != current_bot]
 
-    cleaned = re.sub(r'@(bot_[123])(?!\d)', '', text, flags=re.IGNORECASE)
+    cleaned = re.sub(r'@(bot_\[?[123]\]?)(?!\d)', '', text, flags=re.IGNORECASE)
     cleaned = re.sub(r'\s+', ' ', cleaned)
     cleaned = re.sub(r'\s+([,.!?])', r'\1', cleaned)
     cleaned = cleaned.strip(" ,")
@@ -1172,7 +1185,7 @@ def sanitize_generated_reply(text: str) -> str:
         return ""
         
     # Remove hallucinated bot prefixes
-    text = re.sub(r'^bot_[123]:\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'^bot_\[?[123]\]?:\s*', '', text, flags=re.IGNORECASE)
 
     # 1) 내부 지침 헤더 라인 제거
     text = re.sub(

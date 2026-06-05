@@ -1,6 +1,7 @@
 import asyncio
+from typing import Optional
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends
+from fastapi import FastAPI, Request, Depends, Query
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session as DbSession
@@ -105,11 +106,22 @@ async def get_bot_states(db: DbSession = Depends(get_db)):
     return {"states": bot_states, "session_status": session_status}
 
 @app.get("/api/lpde/state")
-async def get_lpde_states(db: DbSession = Depends(get_db)):
+async def get_lpde_states(
+    session_id: int | None = Query(default=None),
+    db: DbSession = Depends(get_db)
+):
     import json
-    from src.db.models import CurrentAgentState
+    from src.db.models import CurrentAgentState, Session
     
-    lpde_states = db.query(CurrentAgentState).all()
+    if session_id is None:
+        latest_session = db.query(Session).order_by(Session.id.desc()).first()
+        session_id = latest_session.id if latest_session else None
+
+    q = db.query(CurrentAgentState)
+    if session_id is not None:
+        q = q.filter(CurrentAgentState.session_id == session_id)
+        
+    lpde_states = q.all()
     results = []
     for s in lpde_states:
         def safe_load(val):
@@ -126,7 +138,16 @@ async def get_lpde_states(db: DbSession = Depends(get_db)):
             "power": safe_load(s.power_json),
             "updated_at": s.updated_at.strftime("%Y-%m-%d %H:%M:%S") if s.updated_at else None
         })
-    return {"lpde_states": results}
+    if not results:
+        return {
+            "session_id": session_id,
+            "message": "No LPDE state yet for this session",
+            "lpde_states": []
+        }
+    return {
+        "session_id": session_id,
+        "lpde_states": results
+    }
 
 @app.get("/api/system/status")
 async def get_system_status():

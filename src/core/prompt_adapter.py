@@ -16,6 +16,7 @@ class PromptAdapter:
         """
         기존 "bot_1: 텍스트" 형식을 탈피하고 구조화된 로그 형태로 변환합니다.
         items는 {"bot_name": ..., "message": ...} 형태의 딕셔너리 리스트입니다.
+        출력 포맷: '- speaker=... | message="..."'
         """
         if not items:
             return "No previous conversation."
@@ -24,8 +25,10 @@ class PromptAdapter:
         for item in items:
             bot_name = item.get("bot_name", "Unknown")
             msg = item.get("message", "").strip()
+            import json
+            msg_json = json.dumps(msg, ensure_ascii=False)
             # 봇 이름이나 사람 이름을 명확히 분리하고, message를 데이터 필드로 취급
-            line = f"- speaker={bot_name} | message=\"{msg}\""
+            line = f'- speaker={bot_name} | message={msg_json}'
             structured_lines.append(line)
         
         return "\n".join(structured_lines)
