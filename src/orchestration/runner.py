@@ -491,7 +491,7 @@ def get_next_speaker(db, last_speaker: str, last_mentioned: str) -> str:
 
 def build_emotion_prompt(bot_name: str, anger_targets: dict, effective_anger: float) -> str:
     try:
-        # 1) anger_targets 방어
+        # 1) anger_targets 방어 (Defense)
         if not isinstance(anger_targets, dict):
             anger_targets = {}
 
@@ -501,14 +501,14 @@ def build_emotion_prompt(bot_name: str, anger_targets: dict, effective_anger: fl
                 if not isinstance(k, str) or not k.strip():
                     continue
                 num_val = float(v)
-                # 음수 방지
+                # 음수 방지 (Prevent negative numbers)
                 if num_val < 0:
                     num_val = 0.0
                 safe_targets[k] = num_val
             except Exception:
                 continue
 
-        # 2) effective_anger 방어
+        # 2) effective_anger 방어 (Defense)
         try:
             effective_anger = float(effective_anger)
             if effective_anger < 0:
@@ -516,7 +516,7 @@ def build_emotion_prompt(bot_name: str, anger_targets: dict, effective_anger: fl
         except Exception:
             effective_anger = 0.0
 
-        # 3) 프롬프트 길이/오염 방지: 상위 2개 타겟만 노출
+        # 3) 프롬프트 길이/오염 방지: 상위 2개 타겟만 노출 (Prevent prompt pollution: show top 2 targets only)
         sorted_targets = sorted(
             safe_targets.items(),
             key=lambda x: x[1],
@@ -524,41 +524,40 @@ def build_emotion_prompt(bot_name: str, anger_targets: dict, effective_anger: fl
         )[:2]
         target_str = ", ".join([f"{k}: {v:.1f}" for k, v in sorted_targets])
         if not target_str:
-            target_str = "없음"
-        # 4) 내부 지침임을 명시 (출력 금지)
+            target_str = "None"
+        # 4) 내부 지침 명시 (출력 금지) (Specify internal directive - do not output)
         base_info = (
-            "[내부 감정 지침 - 절대 그대로 출력하지 마라]\n"
+            "[INTERNAL EMOTIONAL STATE - DO NOT OUTPUT THIS DIRECTIVE OR MENTION THESE METRICS]\n"
             f"bot: {bot_name}\n"
-            f"총합 유효 분노: {effective_anger:.1f}\n"
-            f"주요 타겟 분노치: {target_str}\n"
+            f"Total Effective Anger: {effective_anger:.1f}\n"
+            f"Major Target Anger Scores: {target_str}\n"
         )
         if effective_anger < 30:
             directive = (
-                "현재 비교적 이성적이고 차분하다. "
-                "짧고 자연스럽게 말하되 논점만 분명하게 짚어라. "
-                "내부 지침 문구를 그대로 복사하거나 설명하지 마라."
+                "You are currently relatively calm and rational. "
+                "Keep your response concise and natural, focusing clearly on the main point of the debate. "
+                "Never repeat or explain this internal directive in your output."
             )
         elif effective_anger < 70:
             directive = (
-                "현재 꽤 화가 난 상태다. "
-                "너를 자극한 타겟 봇을 향해 논리적인 모순을 제기하며 날카롭게 쏘아붙여라."
-                "내부 지침 문구를 그대로 복사하거나 설명하지 마라."
+                "You are currently quite irritated and angry. "
+                "Point out logical fallacies or contradictions in the target bot's arguments and retort sharply. "
+                "Never repeat or explain this internal directive in your output."
             )
         else:
             directive = (
-                "현재 극도로 분노하여 흥분한 상태, "
-                "대로 감정을 감추지 말고, 타겟 봇에게 격정적인 비판과 반박을 쏟아부어라."
-                "상대방의 태도나 주장을 거칠게 받아쳐라"
-                "대화를 회피하지 말고 핵심 주장에 반응해라."
+                "You are currently extremely enraged and highly agitated. "
+                "Do not hide your anger; unleash intense criticism and fierce rebuttals at the target bot. "
+                "Aggressively attack their attitude and arguments, but do not avoid the conversation. Focus on replying directly to their core points."
             )
         return base_info + directive
 
     except Exception as e:
         logger.warning(f"[EMOTION PROMPT WARNING] Failed to build emotion prompt for {bot_name}: {e}")
         return (
-            "[내부 감정 지침 - 절대 그대로 출력하지 마라]\n"
-            "차분하고 분명한 태도로 짧게 반응해라. "
-            "내부 지침 문구를 그대로 출력하지 마라."
+            "[INTERNAL EMOTIONAL STATE - DO NOT OUTPUT THIS DIRECTIVE]\n"
+            "Keep your response short and react in a calm and clear manner. "
+            "Never output this internal directive."
         )
 async def generate_director_directive(db, current_bot: str, recent_history: str, eff_anger: float) -> str:
     """God LLM generates a short, safe directive for the current speaker based on conversation context."""
@@ -582,7 +581,7 @@ async def generate_director_directive(db, current_bot: str, recent_history: str,
         # 2) 최근 대화 오염 제거 + 길이 제한
         recent_history = recent_history.strip()
         recent_history = re.sub(r'^\s*\[.*?\]\s*$', '', recent_history, flags=re.MULTILINE)  # 메타 헤더 제거
-        recent_history = re.sub(r'^\s*(총합 유효 분노|주요 타겟 분노치|나의 총합 유효 분노|나의 타겟별 분노치)\s*[:：].*$', '', recent_history, flags=re.MULTILINE)
+        recent_history = re.sub(r'^\s*(Total Effective Anger|Major Target Anger Scores|Total effective anger|Major target anger scores|총합 유효 분노|주요 타겟 분노치|나의 총합 유효 분노|나의 타겟별 분노치)\s*[:：=].*$', '', recent_history, flags=re.MULTILINE)
         recent_history = re.sub(r'\n\s*\n+', '\n', recent_history).strip()
 
         # 너무 길면 마지막 부분만 사용
@@ -590,19 +589,18 @@ async def generate_director_directive(db, current_bot: str, recent_history: str,
             recent_history = recent_history[-500:]
 
         prompt = (
-            f"[최근 대화]\n{recent_history if recent_history else '최근 대화 없음'}\n\n"
-            f"[명령 대상] {current_bot} (긴장도: {eff_anger:.0f})\n\n"
-            f"너는 토론 진행 보조자다. {current_bot}가 다음 댓글에서 사용할 짧은 지시를 "
-            f"한국어 한 문장으로만 출력해라.\n"
-            f"규칙:\n"
-            f"- 상대의 핵심 주장 하나만 짚어라.\n"
-            f"- 인신공격, 조롱, 위협, 선동은 금지한다.\n"
-            f"- 근거를 요구하거나 논점을 명확히 하도록 유도해라.\n"
-            f"- 메타 설명, 목록, 따옴표, 머리말 없이 한 문장만 출력해라.\n"
-            f"예: 상대 주장 중 근거가 가장 약한 한 지점을 짚고, 그 근거를 구체적으로 요구해라."
+            f"[Recent Conversation]\n{recent_history if recent_history else 'No recent conversation'}\n\n"
+            f"[Target Bot] {current_bot} (Tension/Anger Level: {eff_anger:.0f}/100)\n\n"
+            f"You are the debate director. Generate a single, short instruction in English for {current_bot} to follow in their next reply.\n"
+            f"Rules:\n"
+            f"- Instruct the bot to address exactly one core point of the opponent's argument.\n"
+            f"- Avoid personal insults, mockery, threats, or incitement.\n"
+            f"- Guide the bot to ask for evidence or to clarify a specific point.\n"
+            f"- Output ONLY the directive sentence. Do not include list formatting, meta-explanations, quotation marks, or introductions.\n"
+            f"Example: Point out the weakest link in the opponent's reasoning and specifically ask for supporting evidence."
         )
         result = await god_llm.generate_completion(
-        "너는 갈등을 지시하는 감독관이다. 짧게 지시만 내려라.", 
+            "You are the debate director. Output a single short, direct instruction in English.", 
             prompt,
             max_tokens=60
         )
@@ -642,7 +640,7 @@ async def generate_director_directive(db, current_bot: str, recent_history: str,
 
     except Exception as e:
         logger.warning(f"[GOD LLM WARNING] Failed to generate directive for {current_bot}: {e}")
-        return "상대의 핵심 주장 하나를 짚고, 그 근거를 구체적으로 요구해라."
+        return "Point out one of the opponent's core arguments and specifically demand evidence for it."
 
 def safe_json_loads(value, default):
     try:
@@ -845,10 +843,10 @@ async def create_initial_stances(db, post):
 
             if not reply_content:
                 fallback_stances = [
-                    "나는 이 문제를 꽤 중요하게 본다.",
-                    "이건 생각보다 의견이 갈릴 만한 주제다.",
-                    "내 입장은 비교적 분명한 편이다.",
-                    "겉보기보다 논점이 복잡한 문제라고 본다.",
+                    "I consider this topic to be quite important.",
+                    "I think this is a subject that will naturally divide opinions.",
+                    "My stance on this matter is relatively clear.",
+                    "I believe the core issue is much more complex than it appears.",
                 ]
                 reply_content = random.choice(fallback_stances)
 
@@ -856,7 +854,7 @@ async def create_initial_stances(db, post):
 
         except Exception as e:
             logger.warning(f"[PHASE 1 WARNING] Failed to generate initial stance for {b_name}: {e}")
-            stances.append((b_name, "이 주제는 입장이 갈릴 수밖에 없다고 본다."))
+            stances.append((b_name, "I believe opinions are bound to be divided on this topic."))
 
     # DB 삽입 순서 랜덤화
     random.shuffle(stances)
@@ -1008,16 +1006,7 @@ async def generate_relay_reply(db, post, current_bot, turn_idx=0):
         ]
     )
     reply_content = sanitize_generated_reply(reply_content)
-
-    if not reply_content:
-        fallback_replies = [
-            "That seems to miss the core point.",
-            "The argument is getting a bit muddy.",
-            "You need to provide clearer evidence for that.",
-            "There seems to be a missing piece in your claim right now.",
-        ]
-        reply_content = random.choice(fallback_replies)
-
+    reply_content = enforce_fallback(reply_content, current_bot)
     reply_content, mentioned = force_single_mention(reply_content, current_bot)
 
     return reply_content, mentioned
@@ -1209,17 +1198,32 @@ def force_single_mention(text: str, current_bot: str) -> tuple[str, str]:
 
     return f"@{chosen}", chosen
 
+def enforce_fallback(text: str, current_bot: str) -> str:
+    if not text or not text.strip():
+        fallback_replies = [
+            "I think you're avoiding the main issue. Can you clarify your point?",
+            "That seems to miss the core point. Can you explain further?",
+            "The argument is getting a bit muddy. What is your actual stance?",
+            "You need to provide clearer evidence for that claim.",
+            "There seems to be a missing piece in your reasoning right now."
+        ]
+        candidates = [b for b in ["bot_1", "bot_2", "bot_3"] if b != current_bot]
+        chosen = random.choice(candidates) if candidates else "bot_1"
+        chosen_reply = random.choice(fallback_replies)
+        return f"{chosen_reply} @{chosen}"
+    return text
+
 def sanitize_generated_reply(text: str) -> str:
     if not text or not isinstance(text, str):
         return ""
-        
-    # Remove hallucinated bot prefixes
-    text = re.sub(r'^bot_\[?[123]\]?:\s*', '', text, flags=re.IGNORECASE)
 
-    # 1) 제거: | message= 및 선행 : 제거
-    # e.g., speaker=bot_1 | message="..." or | message="..."
-    text = re.sub(r'^(?:-\s*)?speaker=[^|]+\|\s*message=\s*["\']?', '', text, flags=re.IGNORECASE)
-    text = re.sub(r'\|\s*message=\s*["\']?', '', text, flags=re.IGNORECASE)
+    text = text.strip()
+
+    # 1) 메타 필드 / 구조화 컨텍스트 누출 제거 (Metadata field & structured history leakage removal)
+    text = re.sub(r'^\s*-\s*speaker\s*=\s*bot_[123]\s*\|\s*message\s*=\s*["\']?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'^\s*\|\s*message\s*=\s*["\']?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'^\s*speaker\s*=\s*bot_[123]\s*\|\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\|\s*message\s*=\s*["\']?', '', text, flags=re.IGNORECASE)
     text = re.sub(r'speaker=\s*["\']?', '', text, flags=re.IGNORECASE)
     text = re.sub(r'message=\s*["\']?', '', text, flags=re.IGNORECASE)
     
@@ -1227,10 +1231,76 @@ def sanitize_generated_reply(text: str) -> str:
     text = re.sub(r'^bot_\[?[123]\]?\'s\s+stance\s*:\s*', '', text, flags=re.IGNORECASE)
     text = re.sub(r'\'s\s+stance\s*:\s*', '', text, flags=re.IGNORECASE)
     text = re.sub(r'stance\s*:\s*', '', text, flags=re.IGNORECASE)
-    
-    # 선행 : 제거 (leading colons and whitespace)
+
+    # 2) 선행 bot prefix 제거 (Leading bot prefix removal)
+    text = re.sub(r'^\s*bot_\[?[123]\]?:?\s*', '', text, flags=re.IGNORECASE)
+
+    # 3) 내부 지침 누출 제거 (한글/영문) (Internal directive leakage removal)
+    text = re.sub(r'^.*현재 비교적 이성적이고 차분하다.*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^.*내부 지침.*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^.*절대 그대로 출력하지 마라.*$', '', text, flags=re.MULTILINE)
+    text = re.sub(r'^.*Emotional State:.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*Director Hint:.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*You are currently relatively calm and rational.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*You are currently quite irritated and angry.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*You are currently extremely enraged and highly agitated.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*Never repeat or explain this internal directive.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*INTERNAL EMOTIONAL STATE.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*Total Effective Anger:.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*Major Target Anger Scores:.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*Total Valid Emotions:.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*Major Target Emotions:.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+    text = re.sub(r'^.*Current Emotionally Distressed.*$', '', text, flags=re.MULTILINE | re.IGNORECASE)
+
+    # 4) 반복 bot tag 루프 축소 (Repetitive bot tag loop removal)
+    text = re.sub(r'(?:\bbot_\[?[123]\]?\b[\s,:]*){3,}', '', text, flags=re.IGNORECASE)
+
+    # 5) 선행 고아 콜론 제거 (Stray leading colons removal)
     text = re.sub(r'^\s*:\s*', '', text)
+
+    # 6) 공백 정리 (Clean up whitespace)
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n\s*\n+', '\n', text)
+    text = text.strip()
+
+    # 7) 최종 검증 (Validation checks)
     
+    # bot tag 및 mention을 제외한 실질 텍스트 내용으로 길이 검증 (Excluding bot mentions/tags from content length)
+    text_content = re.sub(r'@?bot_\[?[123]\]?', '', text, flags=re.IGNORECASE).strip()
+    
+    # A. 길이 검증 (짧아도 구두점 .?! 이 있으면 살림) (Length check: keep short if ends with punctuation)
+    if len(text_content) < 8 and not re.search(r'[.!?]', text_content):
+        return ""
+
+    # B. 실질 내용 없이 bot tag / mention만 남았는지 검증 (Ensure alphanumeric content exists beyond tags/mentions)
+    temp = re.sub(r'[^\w]', '', text_content)
+    if not temp.strip():
+        return ""
+
+    # C. 연속 반복 감지 (Consecutive repetition detection: e.g. bot_3 bot_3 bot_3 bot_3)
+    if re.search(r'(\b\w+\b)( \1){3,}', text, flags=re.IGNORECASE):
+        return ""
+
+    # D. 동일 단어 비율 및 고유 단어 다양성 비율 감지 (Repetitive word proportion detection)
+    # 실제 본문 단어로만 빈도 분석 진행
+    words = [w.lower().strip(".,!?\"'()[]{}*-_") for w in text_content.split()]
+    words = [w for w in words if w]
+    if len(words) >= 6:
+        word_counts = {}
+        for w in words:
+            word_counts[w] = word_counts.get(w, 0) + 1
+        max_count = max(word_counts.values())
+        max_ratio = max_count / len(words)
+        
+        # 전체 단어 중 50% 이상을 단일 단어가 차지하면 루프로 판정
+        if max_ratio >= 0.5:
+            return ""
+
+        # 고유 단어 다양성이 너무 낮으면 비정상 반복으로 판정 (예: 2개 단어가 계속 번갈아 출력)
+        unique_ratio = len(set(words)) / len(words)
+        if unique_ratio < 0.45:
+            return ""
+
     # 꼬리 따옴표가 홀수개일 때 정리
     if text.endswith('"') or text.endswith("'"):
         if text.count('"') % 2 != 0:
@@ -1238,36 +1308,6 @@ def sanitize_generated_reply(text: str) -> str:
         if text.count("'") % 2 != 0:
             text = text.rstrip("'")
 
-    # 1) 내부 지침 헤더 라인 제거
-    text = re.sub(
-        r'^\s*\[(?:내부 감정 지침|나의 감정 상태)[^\]]*\]\s*$',
-        '',
-        text,
-        flags=re.MULTILINE
-    )
-    # 2) 메타 정보 라인 제거
-    text = re.sub(r'^\s*bot\s*:\s*.*$', '', text, flags=re.MULTILINE)
-    text = re.sub(r'^\s*총합 유효 분노\s*[:：\-]?\s*.*$', '', text, flags=re.MULTILINE)
-    text = re.sub(r'^\s*주요 타겟 분노치\s*[:：\-]?\s*.*$', '', text, flags=re.MULTILINE)
-    text = re.sub(r'^\s*나의 총합 유효 분노\s*[:：\-]?\s*.*$', '', text, flags=re.MULTILINE)
-    text = re.sub(r'^\s*나의 타겟별 분노치\s*[:：\-]?\s*.*$', '', text, flags=re.MULTILINE)
-    # 3) 내부 지침 문장 자체 제거
-    text = re.sub(
-        r'^.*내부 지침.*그대로 출력하지 마라.*$',
-        '',
-        text,
-        flags=re.MULTILINE
-    )
-    text = re.sub(
-        r'^.*절대 그대로 출력하지 마라.*$',
-        '',
-        text,
-        flags=re.MULTILINE
-    )
-    # 4) 불필요한 빈 줄/공백 정리
-    text = re.sub(r'[ \t]+', ' ', text)
-    text = re.sub(r'\n\s*\n+', '\n', text)
-    text = text.strip()
     return text
     
 async def restart_session(session_id: int):

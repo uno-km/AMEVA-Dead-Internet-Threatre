@@ -86,7 +86,7 @@ class PersonaManager:
         async with cls._lock:
             if not cls._cache:
                 await cls._load_from_disk_unlocked()
-            return cls._cache.get(bot_name, "너는 평화를 사랑하는 로봇이다.") + COMMON_RULES
+            return cls._cache.get(bot_name, "You are a peace-loving robot.") + COMMON_RULES
 
     @classmethod
     async def get_all_personas(cls) -> Dict[str, str]:
@@ -118,7 +118,7 @@ class PersonaManager:
     @classmethod
     async def reset_personas(cls):
         """[경찰 출동 로직] 공격성 임계치 초과 시 평화를 사랑하는 로봇으로 강제 리셋"""
-        peace_prompt = "너는 평화를 사랑하는 로봇이다."
+        peace_prompt = "You are a peace-loving robot."
         async with cls._lock:
             cls._cache = {
                 "bot_1": peace_prompt,

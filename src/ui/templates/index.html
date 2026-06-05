@@ -117,7 +117,7 @@
 
     <!-- Bot Inspector Drawer -->
     <div id="inspector-overlay" class="fixed inset-0 bg-black bg-opacity-20 z-40 hidden" onclick="closeInspector()"></div>
-    <div id="inspector-drawer" class="fixed top-0 right-0 h-full w-[450px] bg-white bg-opacity-95 backdrop-blur-md shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col border-l border-indigo-100">
+    <div id="inspector-drawer" class="fixed top-0 right-0 h-full w-[500px] bg-white bg-opacity-95 backdrop-blur-md shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col border-l border-indigo-100">
         <!-- Header -->
         <div class="p-5 border-b flex justify-between items-center bg-indigo-50">
             <div>
@@ -126,7 +126,7 @@
                     <span class="text-xs font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200" id="inspector-phase">Phase: Unknown</span>
                 </div>
                 <div class="flex items-center gap-3 mt-2">
-                    <select id="inspector-session-select" class="text-xs bg-white border border-gray-300 text-gray-700 rounded px-2 py-1 focus:outline-none focus:border-indigo-500 w-32" onchange="fetchInspectorData(true)">
+                    <select id="inspector-session-select" class="text-xs bg-white border border-gray-300 text-gray-700 rounded px-2 py-1 focus:outline-none focus:border-indigo-500 w-32" onchange="forceFetchInspectorData()">
                         <option value="">Latest Session</option>
                     </select>
                     <label class="flex items-center cursor-pointer">
@@ -145,6 +145,10 @@
         </div>
         
         <div class="flex-1 overflow-y-auto p-5 space-y-6">
+            <div id="inspector-empty-msg" class="hidden bg-yellow-50 text-yellow-800 p-3 rounded-lg border border-yellow-200 text-sm mb-4">
+                No LPDE state yet for this session. Waiting for data...
+            </div>
+
             <!-- Persona & Directive -->
             <div>
                 <details class="mb-2 text-sm text-gray-600 bg-gray-50 p-2 rounded border cursor-pointer">
@@ -174,13 +178,41 @@
                 <canvas id="radarChart" width="400" height="300"></canvas>
             </div>
 
-            <!-- Time Series Chart -->
-            <div class="bg-white p-3 rounded-xl border shadow-sm">
-                <h3 class="text-sm font-bold text-gray-800 mb-2 flex justify-between">
-                    <span>State Trajectory</span>
-                    <span class="text-xs text-gray-400 font-normal">Last 50 turns</span>
-                </h3>
-                <canvas id="lineChart" width="400" height="200"></canvas>
+            <!-- Time Series Charts (Split) -->
+            <div class="space-y-4">
+                <div class="bg-white p-3 rounded-xl border shadow-sm">
+                    <h3 class="text-sm font-bold text-gray-800 mb-2 flex justify-between">
+                        <span>Arousal Trajectory</span>
+                        <span class="text-[10px] text-gray-400 font-normal">Primary Axis</span>
+                    </h3>
+                    <canvas id="arousalChart" width="400" height="150"></canvas>
+                </div>
+                <div class="bg-white p-3 rounded-xl border shadow-sm">
+                    <h3 class="text-sm font-bold text-gray-800 mb-2 flex justify-between">
+                        <span>Stance Trajectory</span>
+                        <span class="text-[10px] text-gray-400 font-normal">Secondary Axis</span>
+                    </h3>
+                    <canvas id="stanceChart" width="400" height="100"></canvas>
+                </div>
+            </div>
+
+            <!-- Edges Table -->
+            <div>
+                <h3 class="text-sm font-bold text-gray-800 mb-2">Relationship Edges</h3>
+                <div class="bg-white border rounded-lg overflow-hidden shadow-sm">
+                    <table class="w-full text-left text-xs text-gray-600">
+                        <thead class="bg-gray-50 border-b">
+                            <tr>
+                                <th class="p-2">Source</th>
+                                <th class="p-2">Target</th>
+                                <th class="p-2 text-right">Relation Vector</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inspector-edges-tbody" class="divide-y divide-gray-100">
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- Interventions -->
@@ -191,25 +223,40 @@
                 </div>
             </div>
 
-            <!-- Raw Data Accordion -->
-            <details class="text-xs bg-gray-900 text-green-400 rounded p-2 overflow-hidden shadow-inner">
-                <summary class="font-bold text-gray-300 cursor-pointer">Raw LPDE Tensors</summary>
-                <pre id="inspector-raw-json" class="mt-2 whitespace-pre-wrap max-h-60 overflow-y-auto p-2 border-t border-gray-700"></pre>
+            <!-- Raw Data Accordion & Copy Buttons -->
+            <details class="text-xs bg-gray-900 text-green-400 rounded p-2 overflow-hidden shadow-inner mb-4">
+                <summary class="font-bold text-gray-300 cursor-pointer flex justify-between">
+                    <span>Raw LPDE Tensors & Debug Tools</span>
+                </summary>
+                <div class="flex gap-2 mt-3 mb-2 flex-wrap">
+                    <button onclick="copyToClipboard('summary')" class="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-[10px]">Copy Summary</button>
+                    <button onclick="copyToClipboard('delta')" class="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-[10px]">Copy Delta</button>
+                    <button onclick="copyToClipboard('detail')" class="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-[10px]">Copy Detail/Raw</button>
+                </div>
+                <pre id="inspector-raw-json" class="whitespace-pre-wrap max-h-60 overflow-y-auto p-2 border-t border-gray-700"></pre>
             </details>
         </div>
     </div>
 
     <script>
         let currentPostId = null;
-        let currentGlobalSessionId = null;
         let knownCommentIds = new Set();
         let systemStatusMap = {};
         
         // Inspector State
         let inspectorOpenBot = null;
         let inspectorAutoRefresh = true;
+        let inspectorPollTimer = null;
+        
+        let lastSummaryHash = null;
+        let lastDetailHash = null;
+
         let radarChartInstance = null;
-        let lineChartInstance = null;
+        let arousalChartInstance = null;
+        let stanceChartInstance = null;
+
+        let lastSummaryData = null;
+        let lastDetailData = null;
 
         // --- Fetch System Status ---
         async function fetchSystemStatus() {
@@ -262,12 +309,14 @@
                 const container = document.getElementById('bot-states-container');
                 container.innerHTML = '';
                 
-                if (data.bots && data.bots.length > 0) {
-                    data.bots.forEach(bot => {
-                        let eff = bot.eff_anger;
+                const bots = data.states || data.bots || [];
+                if (bots && bots.length > 0) {
+                    bots.forEach(bot => {
+                        let eff = bot.effective_anger !== undefined ? bot.effective_anger : (bot.eff_anger || 0);
                         let pct = Math.min(eff, 100);
                         
-                        let targetHtml = Object.entries(bot.anger_targets).map(([t, val]) => 
+                        let angerTargets = typeof bot.anger_targets === 'object' ? bot.anger_targets : {};
+                        let targetHtml = Object.entries(angerTargets).map(([t, val]) => 
                             `<div class="flex justify-between text-xs text-gray-600"><span>vs ${t}</span><span class="font-bold text-red-500">${val}</span></div>`
                         ).join('');
 
@@ -277,7 +326,6 @@
 
                         let directiveText = bot.current_directive ? `<div class="mt-2 text-xs font-medium text-indigo-700 bg-indigo-50 p-2 rounded border border-indigo-100">🗣️ <b>현재 지침:</b> ${bot.current_directive}</div>` : '';
 
-                        // Add cursor-pointer and onclick
                         container.innerHTML += `
                             <div onclick="openInspector('${bot.bot_name}')" class="cursor-pointer hover:bg-indigo-50 hover:shadow-md bg-white bg-opacity-50 p-3 rounded-xl border-2 ${isRunning ? 'border-green-300' : 'border-transparent'} transition-all duration-300 transform hover:-translate-y-1">
                                 <div class="flex justify-between items-end mb-1">
@@ -437,6 +485,9 @@
 
         function toggleAutoRefresh() {
             inspectorAutoRefresh = document.getElementById('inspector-auto-refresh').checked;
+            if (inspectorAutoRefresh && inspectorOpenBot) {
+                forceFetchInspectorData();
+            }
         }
 
         function openInspector(botName) {
@@ -445,16 +496,33 @@
             document.getElementById('inspector-overlay').classList.remove('hidden');
             document.getElementById('inspector-drawer').classList.remove('translate-x-full');
             
-            // Fetch session list for dropdown
+            lastSummaryHash = null;
+            lastDetailHash = null;
+
             fetchSessionsList();
-            // Fetch immediate data
-            fetchInspectorData(true);
+            forceFetchInspectorData();
         }
 
         function closeInspector() {
             inspectorOpenBot = null;
+            if (inspectorPollTimer) clearTimeout(inspectorPollTimer);
             document.getElementById('inspector-overlay').classList.add('hidden');
             document.getElementById('inspector-drawer').classList.add('translate-x-full');
+        }
+
+        function copyToClipboard(type) {
+            let dataToCopy = "";
+            if (type === 'summary' && lastSummaryData) dataToCopy = JSON.stringify(lastSummaryData, null, 2);
+            else if (type === 'delta' && lastSummaryData) dataToCopy = JSON.stringify(lastSummaryData.deltas, null, 2);
+            else if (type === 'detail' && lastDetailData) dataToCopy = JSON.stringify(lastDetailData.raw_tensors, null, 2);
+            
+            if (dataToCopy) {
+                navigator.clipboard.writeText(dataToCopy).then(() => {
+                    alert('Copied to clipboard!');
+                });
+            } else {
+                alert('No data available to copy.');
+            }
         }
 
         async function fetchSessionsList() {
@@ -485,196 +553,290 @@
             return arr[index];
         }
 
-        async function fetchInspectorData(force = false) {
-            if (!inspectorOpenBot) return;
-            if (!force && !inspectorAutoRefresh) return;
+        function forceFetchInspectorData() {
+            if (inspectorPollTimer) clearTimeout(inspectorPollTimer);
+            lastSummaryHash = null;
+            lastDetailHash = null;
+            fetchInspectorCycle();
+        }
 
-            const sessionSelect = document.getElementById('inspector-session-select').value;
-            let url = `/api/lpde/bot/${inspectorOpenBot}`;
-            if (sessionSelect) {
-                url += `?session_id=${sessionSelect}`;
+        // Adaptive polling cycle
+        async function fetchInspectorCycle() {
+            if (!inspectorOpenBot) return;
+
+            // Determine if we should poll
+            const isTabVisible = !document.hidden;
+            const globalState = systemStatusMap["global_state"] || "UNKNOWN";
+            const isRunning = globalState === "RUNNING";
+
+            if (isTabVisible && inspectorAutoRefresh) {
+                try {
+                    const sessionSelect = document.getElementById('inspector-session-select').value;
+                    let baseQuery = sessionSelect ? `?session_id=${sessionSelect}` : '';
+
+                    // 1. Fetch & Render Summary (Lightweight)
+                    const resSum = await fetch(`/api/lpde/bot/${inspectorOpenBot}/summary${baseQuery}`);
+                    const summaryData = await resSum.json();
+                    
+                    const newSumHash = JSON.stringify(summaryData);
+                    if (newSumHash !== lastSummaryHash) {
+                        lastSummaryHash = newSumHash;
+                        lastSummaryData = summaryData;
+                        renderSummary(summaryData);
+                    }
+
+                    // 2. Deferred Fetch & Render Detail (Heavy)
+                    // If summary tells us we don't even have LPDE state, skip detail
+                    if (summaryData.message !== "No LPDE state yet for this session") {
+                        let detailQuery = sessionSelect ? `?session_id=${sessionSelect}&limit=50` : '?limit=50';
+                        const resDet = await fetch(`/api/lpde/bot/${inspectorOpenBot}/detail${detailQuery}`);
+                        const detailData = await resDet.json();
+                        
+                        const newDetHash = JSON.stringify(detailData);
+                        if (newDetHash !== lastDetailHash) {
+                            lastDetailHash = newDetHash;
+                            lastDetailData = detailData;
+                            renderDetail(detailData);
+                        }
+                    }
+
+                } catch (err) {
+                    console.error("Inspector polling error:", err);
+                }
             }
 
-            try {
-                const res = await fetch(url);
-                const data = await res.json();
+            // Schedule next poll adaptively
+            let delay = 10000; // Slow polling if paused/hidden
+            if (isTabVisible && isRunning) {
+                delay = 2500; // Fast polling
+            }
+            inspectorPollTimer = setTimeout(fetchInspectorCycle, delay);
+        }
 
-                // Update Header
-                document.getElementById('inspector-phase').innerText = `Phase: ${data.phase || 'Unknown'}`;
-                document.getElementById('inspector-persona').innerText = data.legacy_state.persona || 'None';
-                document.getElementById('inspector-directive').innerText = data.legacy_state.current_directive || 'None';
+        function renderSummary(data) {
+            // Update Empty state
+            const emptyEl = document.getElementById('inspector-empty-msg');
+            if (data.message === "No LPDE state yet for this session") {
+                emptyEl.classList.remove('hidden');
+                document.getElementById('inspector-raw-json').innerText = "Empty";
+            } else {
+                emptyEl.classList.add('hidden');
+            }
+
+            // Update Header
+            document.getElementById('inspector-phase').innerText = `Phase: ${data.phase || 'Unknown'}`;
+            document.getElementById('inspector-persona').innerText = (data.legacy_state && data.legacy_state.persona) || 'None';
+            document.getElementById('inspector-directive').innerText = (data.legacy_state && data.legacy_state.current_directive) || 'None';
+
+            const activeDims = data.active_dims || [];
+            const isAffectActive = activeDims.includes('affect');
+            const isOpinionActive = activeDims.includes('opinion');
+            const isPowerActive = activeDims.includes('power');
+
+            const t = data.lpde_tensors || {};
+            const d = data.deltas || {};
+
+            function buildChip(label, valArr, deltaArr, index, isActive) {
+                const val = getSafeVal(valArr, index);
+                const delta = getSafeVal(deltaArr, index);
                 
-                // Update Raw JSON
-                document.getElementById('inspector-raw-json').innerText = JSON.stringify(data.lpde_tensors, null, 2);
-
-                const activeDims = data.active_dims || [];
-                const isAffectActive = activeDims.includes('affect');
-                const isOpinionActive = activeDims.includes('opinion');
-                const isPowerActive = activeDims.includes('power');
-
-                // Update Vector Summary Chips
-                // Assume affect_json: [valence, arousal], opinion_json: [stance, moral_salience], power_json: [self_appraisal, systemic_influence]
-                const t = data.lpde_tensors;
-                const d = data.deltas;
-
-                function buildChip(label, valArr, deltaArr, index, isActive) {
-                    const val = getSafeVal(valArr, index);
-                    const delta = getSafeVal(deltaArr, index);
-                    
-                    if (!isActive || val === null || val === undefined) {
-                        return `
-                        <div class="bg-gray-100 p-2 rounded border border-gray-200 opacity-60">
-                            <div class="text-[10px] text-gray-500 font-bold uppercase">${label}</div>
-                            <div class="text-sm font-bold text-gray-400 mt-1 flex justify-between items-center">
-                                N/A <span class="text-[10px] bg-gray-200 px-1 rounded">Inactive</span>
-                            </div>
-                        </div>`;
-                    }
-                    
-                    const deltaColor = delta > 0 ? 'text-green-600' : (delta < 0 ? 'text-red-600' : 'text-gray-400');
-                    const deltaSign = delta > 0 ? '▲ +' : (delta < 0 ? '▼ ' : '');
-                    const deltaText = delta !== 0 ? `${deltaSign}${delta}` : '-';
-
+                if (!isActive || val === null || val === undefined) {
                     return `
-                    <div class="bg-white p-2 rounded border border-gray-200 shadow-sm">
+                    <div class="bg-gray-100 p-2 rounded border border-gray-200 opacity-60">
                         <div class="text-[10px] text-gray-500 font-bold uppercase">${label}</div>
-                        <div class="text-sm font-bold text-gray-900 mt-1 flex justify-between items-center">
-                            ${val.toFixed(2)}
-                            <span class="text-[10px] font-bold ${deltaColor}">${deltaText}</span>
+                        <div class="text-sm font-bold text-gray-400 mt-1 flex justify-between items-center">
+                            N/A <span class="text-[10px] bg-gray-200 px-1 rounded">Inactive</span>
                         </div>
                     </div>`;
                 }
+                
+                const deltaColor = delta > 0 ? 'text-green-600' : (delta < 0 ? 'text-red-600' : 'text-gray-400');
+                const deltaSign = delta > 0 ? '▲ +' : (delta < 0 ? '▼ ' : '');
+                const deltaText = (delta !== 0 && delta !== null) ? `${deltaSign}${delta}` : (delta === null ? 'N/A' : '-');
 
-                const chipsHtml = `
-                    ${buildChip('Valence', t.affect, d.affect, 0, isAffectActive)}
-                    ${buildChip('Arousal', t.affect, d.affect, 1, isAffectActive)}
-                    ${buildChip('Stance', t.opinion, d.opinion, 0, isOpinionActive)}
-                    ${buildChip('Moral Salience', t.opinion, d.opinion, 1, isOpinionActive)}
-                    ${buildChip('Self Appraisal', t.power, d.power, 0, isPowerActive)}
-                    ${buildChip('Sys. Influence', t.power, d.power, 1, isPowerActive)}
-                `;
-                document.getElementById('inspector-summary-chips').innerHTML = chipsHtml;
+                return `
+                <div class="bg-white p-2 rounded border border-gray-200 shadow-sm">
+                    <div class="text-[10px] text-gray-500 font-bold uppercase">${label}</div>
+                    <div class="text-sm font-bold text-gray-900 mt-1 flex justify-between items-center">
+                        ${val.toFixed(2)}
+                        <span class="text-[10px] font-bold ${deltaColor}">${deltaText}</span>
+                    </div>
+                </div>`;
+            }
 
-                // Update Radar Chart
-                // Assuming standard indices for mapping
-                const rValence = getSafeVal(t.affect, 0) || 0;
-                const rArousal = getSafeVal(t.affect, 1) || 0;
-                const rStance = getSafeVal(t.opinion, 0) || 0;
-                const rMoral = getSafeVal(t.opinion, 1) || 0;
-                const rSelf = getSafeVal(t.power, 0) || 0;
-                const rSys = getSafeVal(t.power, 1) || 0;
+            const chipsHtml = `
+                ${buildChip('Valence', t.affect, d.affect, 0, isAffectActive)}
+                ${buildChip('Arousal', t.affect, d.affect, 1, isAffectActive)}
+                ${buildChip('Stance', t.opinion, d.opinion, 0, isOpinionActive)}
+                ${buildChip('Moral Salience', t.opinion, d.opinion, 1, isOpinionActive)}
+                ${buildChip('Self Appraisal', t.power, d.power, 0, isPowerActive)}
+                ${buildChip('Sys. Influence', t.power, d.power, 1, isPowerActive)}
+            `;
+            document.getElementById('inspector-summary-chips').innerHTML = chipsHtml;
 
-                const radarData = [rValence, rArousal, rStance, rMoral, rSelf, rSys];
-                // Inactive styling trick: If we want true dashed styling per axis, Chart.js radar doesn't support dashed *grid lines* easily per axis, 
-                // but we can just show the data. 
+            // Radar Chart with null support for inactive axes
+            const rValence = isAffectActive ? (getSafeVal(t.affect, 0) || 0) : null;
+            const rArousal = isAffectActive ? (getSafeVal(t.affect, 1) || 0) : null;
+            const rStance = isOpinionActive ? (getSafeVal(t.opinion, 0) || 0) : null;
+            const rMoral = isOpinionActive ? (getSafeVal(t.opinion, 1) || 0) : null;
+            const rSelf = isPowerActive ? (getSafeVal(t.power, 0) || 0) : null;
+            const rSys = isPowerActive ? (getSafeVal(t.power, 1) || 0) : null;
 
-                if (!radarChartInstance) {
-                    const ctxR = document.getElementById('radarChart').getContext('2d');
-                    radarChartInstance = new Chart(ctxR, {
-                        type: 'radar',
-                        data: {
-                            labels: ['Valence', 'Arousal', 'Stance', 'Moral Sal.', 'Self Appr.', 'Sys. Infl.'],
-                            datasets: [{
-                                label: 'Current State',
-                                data: radarData,
-                                backgroundColor: 'rgba(99, 102, 241, 0.2)',
-                                borderColor: 'rgba(99, 102, 241, 1)',
-                                pointBackgroundColor: 'rgba(99, 102, 241, 1)',
-                                pointBorderColor: '#fff',
-                                pointHoverBackgroundColor: '#fff',
-                                pointHoverBorderColor: 'rgba(99, 102, 241, 1)'
-                            }]
+            const radarData = [rValence, rArousal, rStance, rMoral, rSelf, rSys];
+
+            if (!radarChartInstance) {
+                const ctxR = document.getElementById('radarChart').getContext('2d');
+                radarChartInstance = new Chart(ctxR, {
+                    type: 'radar',
+                    data: {
+                        labels: ['Valence', 'Arousal', 'Stance', 'Moral Sal.', 'Self Appr.', 'Sys. Infl.'],
+                        datasets: [{
+                            label: 'Current State',
+                            data: radarData,
+                            backgroundColor: 'rgba(99, 102, 241, 0.2)',
+                            borderColor: 'rgba(99, 102, 241, 1)',
+                            pointBackgroundColor: 'rgba(99, 102, 241, 1)',
+                            pointBorderColor: '#fff',
+                            pointHoverBackgroundColor: '#fff',
+                            pointHoverBorderColor: 'rgba(99, 102, 241, 1)',
+                            spanGaps: false // Will not draw line over nulls
+                        }]
+                    },
+                    options: {
+                        scales: {
+                            r: { min: -1, max: 1, ticks: { stepSize: 0.5, display: false } }
                         },
-                        options: {
-                            scales: {
-                                r: {
-                                    min: -1,
-                                    max: 1,
-                                    ticks: { stepSize: 0.5, display: false }
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) { label += ': '; }
+                                        if (context.parsed.r !== null) { label += context.parsed.r; }
+                                        else { label += 'Inactive / Not used'; }
+                                        return label;
+                                    }
                                 }
-                            },
-                            plugins: { legend: { display: false } }
-                        }
-                    });
-                } else {
-                    radarChartInstance.data.datasets[0].data = radarData;
-                    radarChartInstance.update();
-                }
-
-                // Update Line Chart (Time Series)
-                const labels = data.time_series.map(s => `T${s.turn_index}`);
-                const arousalData = data.time_series.map(s => getSafeVal(s.affect, 1) || 0);
-                const stanceData = data.time_series.map(s => getSafeVal(s.opinion, 0) || 0);
-                // Also can plot anger if available, but let's stick to LPDE tensors for now.
-
-                if (!lineChartInstance) {
-                    const ctxL = document.getElementById('lineChart').getContext('2d');
-                    lineChartInstance = new Chart(ctxL, {
-                        type: 'line',
-                        data: {
-                            labels: labels,
-                            datasets: [
-                                {
-                                    label: 'Arousal',
-                                    data: arousalData,
-                                    borderColor: 'rgb(239, 68, 68)',
-                                    tension: 0.3,
-                                    borderWidth: 2,
-                                    pointRadius: 2
-                                },
-                                {
-                                    label: 'Stance',
-                                    data: stanceData,
-                                    borderColor: 'rgb(59, 130, 246)',
-                                    tension: 0.3,
-                                    borderWidth: 2,
-                                    pointRadius: 2
-                                }
-                            ]
-                        },
-                        options: {
-                            responsive: true,
-                            scales: {
-                                y: { min: -1, max: 1 }
-                            },
-                            plugins: {
-                                legend: { position: 'top', labels: { boxWidth: 10, font: { size: 10 } } }
                             }
                         }
-                    });
-                } else {
-                    lineChartInstance.data.labels = labels;
-                    lineChartInstance.data.datasets[0].data = arousalData;
-                    lineChartInstance.data.datasets[1].data = stanceData;
-                    lineChartInstance.update();
-                }
-
-                // Update Interventions
-                const intContainer = document.getElementById('inspector-interventions');
-                if (!data.interventions || data.interventions.length === 0) {
-                    intContainer.innerHTML = '<div class="text-gray-400 italic text-center py-2">No recent interventions</div>';
-                } else {
-                    let intHtml = '';
-                    data.interventions.forEach(inv => {
-                        intHtml += `
-                        <div class="bg-gray-50 p-2 rounded border border-gray-200">
-                            <div class="flex justify-between items-center mb-1">
-                                <span class="font-bold text-indigo-700">Turn ${inv.turn_index}</span>
-                                <span class="text-[10px] bg-red-100 text-red-700 px-1 rounded uppercase">${inv.kind}</span>
-                            </div>
-                            <div class="text-gray-700 mb-1 leading-tight">${inv.reason || 'No reason specified'}</div>
-                            <div class="text-[10px] text-gray-500 font-mono bg-gray-100 p-1 rounded">Delta: ${JSON.stringify(inv.delta)}</div>
-                        </div>`;
-                    });
-                    intContainer.innerHTML = intHtml;
-                }
-
-            } catch (err) {
-                console.error("Inspector data fetch error:", err);
+                    }
+                });
+            } else {
+                radarChartInstance.data.datasets[0].data = radarData;
+                radarChartInstance.update('none'); // Update without animation for smooth polling
             }
         }
 
-        // --- Initialization and Polling ---
+        function renderDetail(data) {
+            document.getElementById('inspector-raw-json').innerText = JSON.stringify(data.raw_tensors, null, 2);
+
+            const labels = data.time_series.map(s => `T${s.turn_index}`);
+            const arousalData = data.time_series.map(s => getSafeVal(s.affect, 1) || 0);
+            const stanceData = data.time_series.map(s => getSafeVal(s.opinion, 0) || 0);
+
+            // Primary: Arousal
+            if (!arousalChartInstance) {
+                const ctxA = document.getElementById('arousalChart').getContext('2d');
+                arousalChartInstance = new Chart(ctxA, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Arousal',
+                            data: arousalData,
+                            borderColor: 'rgb(239, 68, 68)',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 2,
+                            pointRadius: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: { y: { min: -1, max: 1 } },
+                        plugins: { legend: { display: false } },
+                        animation: { duration: 0 } // No animation for smooth polling
+                    }
+                });
+            } else {
+                arousalChartInstance.data.labels = labels;
+                arousalChartInstance.data.datasets[0].data = arousalData;
+                arousalChartInstance.update('none');
+            }
+
+            // Secondary: Stance
+            if (!stanceChartInstance) {
+                const ctxS = document.getElementById('stanceChart').getContext('2d');
+                stanceChartInstance = new Chart(ctxS, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: 'Stance',
+                            data: stanceData,
+                            borderColor: 'rgb(59, 130, 246)',
+                            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 2,
+                            pointRadius: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: { y: { min: -1, max: 1 } },
+                        plugins: { legend: { display: false } },
+                        animation: { duration: 0 }
+                    }
+                });
+            } else {
+                stanceChartInstance.data.labels = labels;
+                stanceChartInstance.data.datasets[0].data = stanceData;
+                stanceChartInstance.update('none');
+            }
+
+            // Edges Table
+            const edgesTbody = document.getElementById('inspector-edges-tbody');
+            if (!data.edges || data.edges.length === 0) {
+                edgesTbody.innerHTML = '<tr><td colspan="3" class="text-center p-4 text-gray-400 italic">No edges found</td></tr>';
+            } else {
+                let edgesHtml = '';
+                data.edges.forEach(e => {
+                    edgesHtml += `
+                        <tr class="hover:bg-gray-50">
+                            <td class="p-2 font-mono">${e.source}</td>
+                            <td class="p-2 font-mono">${e.target}</td>
+                            <td class="p-2 text-right">${JSON.stringify(e.relation)}</td>
+                        </tr>
+                    `;
+                });
+                edgesTbody.innerHTML = edgesHtml;
+            }
+
+            // Interventions
+            const intContainer = document.getElementById('inspector-interventions');
+            if (!data.interventions || data.interventions.length === 0) {
+                intContainer.innerHTML = '<div class="text-gray-400 italic text-center py-2">No recent interventions</div>';
+            } else {
+                let intHtml = '';
+                data.interventions.forEach(inv => {
+                    intHtml += `
+                    <div class="bg-gray-50 p-2 rounded border border-gray-200">
+                        <div class="flex justify-between items-center mb-1">
+                            <span class="font-bold text-indigo-700">Turn ${inv.turn_index}</span>
+                            <span class="text-[10px] bg-red-100 text-red-700 px-1 rounded uppercase">${inv.kind}</span>
+                        </div>
+                        <div class="text-gray-700 mb-1 leading-tight">${inv.reason || 'No reason specified'}</div>
+                        <div class="text-[10px] text-gray-500 font-mono bg-gray-100 p-1 rounded">Delta: ${JSON.stringify(inv.delta)}</div>
+                    </div>`;
+                });
+                intContainer.innerHTML = intHtml;
+            }
+        }
+
+        // --- Initialization and Global Polling ---
         fetchSystemStatus();
         fetchBotStates();
         fetchPostList();
@@ -683,7 +845,13 @@
         setInterval(fetchBotStates, 2000);
         setInterval(fetchPostList, 5000);
         setInterval(fetchPostDetail, 2000);
-        setInterval(() => fetchInspectorData(false), 2500); // Inspector Polling
+
+        // Resume fast polling if tab becomes visible
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden && inspectorOpenBot && inspectorAutoRefresh) {
+                forceFetchInspectorData();
+            }
+        });
 
     </script>
 </body>

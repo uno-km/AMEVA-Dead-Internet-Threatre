@@ -155,15 +155,14 @@ async def get_sessions(db: DbSession = Depends(get_db)):
     sessions = db.query(Session).order_by(Session.id.desc()).all()
     return [{"id": s.id, "status": s.status, "created_at": s.created_at.strftime("%Y-%m-%d %H:%M:%S")} for s in sessions]
 
-@app.get("/api/lpde/bot/{bot_name}")
-async def get_bot_inspector_detail(
+@app.get("/api/lpde/bot/{bot_name}/summary")
+async def get_bot_inspector_summary(
     bot_name: str,
     session_id: int | None = Query(default=None),
-    limit: int = Query(default=50, ge=1, le=100),
     db: DbSession = Depends(get_db)
 ):
     import json
-    from src.db.models import Session, BotState, CurrentAgentState, AgentStateSnapshot, EdgeState, InterventionLog
+    from src.db.models import Session, BotState, CurrentAgentState, AgentStateSnapshot
     from src.orchestration.runner import calculate_effective_anger
 
     if session_id is None:
@@ -180,7 +179,6 @@ async def get_bot_inspector_detail(
         anger_dict = {}
     effective_anger = calculate_effective_anger(anger_dict)
 
-    # Current Agent State (LPDE Tensors)
     current_state = db.query(CurrentAgentState).filter(
         CurrentAgentState.session_id == session_id,
         CurrentAgentState.bot_name == bot_name
@@ -192,35 +190,25 @@ async def get_bot_inspector_detail(
         except:
             return []
 
-    lpde_tensors = {
-        "traits": safe_load(current_state.traits_json) if current_state else [],
-        "states": safe_load(current_state.states_json) if current_state else [],
-        "affect": safe_load(current_state.affect_json) if current_state else [],
-        "memory": safe_load(current_state.memory_json) if current_state else [],
-        "opinion": safe_load(current_state.opinion_json) if current_state else [],
-        "power": safe_load(current_state.power_json) if current_state else [],
-        "residual": safe_load(current_state.residual_json) if current_state else []
-    }
-    
     # Deltas
     snapshots = db.query(AgentStateSnapshot).filter(
         AgentStateSnapshot.session_id == session_id,
         AgentStateSnapshot.bot_name == bot_name
-    ).order_by(AgentStateSnapshot.turn_index.desc()).limit(limit).all()
+    ).order_by(AgentStateSnapshot.turn_index.desc()).limit(2).all()
     
-    deltas = {}
+    deltas = {"affect": None, "opinion": None, "power": None}
     if len(snapshots) >= 2:
         latest_snap = snapshots[0]
         prev_snap = snapshots[1]
         
-        # Simple delta calculation for affect/opinion/power vectors
         def calc_delta(latest_val, prev_val):
             l_list = safe_load(latest_val)
             p_list = safe_load(prev_val)
             res = []
             for l, p in zip(l_list, p_list):
                 if isinstance(l, (int, float)) and isinstance(p, (int, float)):
-                    res.append(round(l - p, 3))
+                    val = round(l - p, 3)
+                    res.append(val)
                 else:
                     res.append(0)
             return res
@@ -231,7 +219,95 @@ async def get_bot_inspector_detail(
             "power": calc_delta(latest_snap.power_json, prev_snap.power_json)
         }
 
+    # Empty state handling
+    if not current_state:
+        return {
+            "bot_name": bot_name,
+            "session_id": session_id,
+            "phase": "shadow_updater_1A",
+            "active_dims": ["affect", "opinion", "power"],
+            "message": "No LPDE state yet for this session",
+            "legacy_state": {
+                "persona": persona,
+                "current_directive": current_directive,
+                "effective_anger": effective_anger,
+                "anger_targets": anger_dict
+            },
+            "lpde_tensors": {"affect": [], "opinion": [], "power": []},
+            "deltas": deltas
+        }
+
+    lpde_tensors = {
+        "affect": safe_load(current_state.affect_json),
+        "opinion": safe_load(current_state.opinion_json),
+        "power": safe_load(current_state.power_json)
+    }
+
+    return {
+        "bot_name": bot_name,
+        "session_id": session_id,
+        "updated_at": current_state.updated_at.strftime("%Y-%m-%d %H:%M:%S") if current_state.updated_at else None,
+        "phase": "shadow_updater_1A",
+        "active_dims": ["affect", "opinion", "power"],
+        "legacy_state": {
+            "persona": persona,
+            "current_directive": current_directive,
+            "effective_anger": effective_anger,
+            "anger_targets": anger_dict
+        },
+        "lpde_tensors": lpde_tensors,
+        "deltas": deltas
+    }
+
+@app.get("/api/lpde/bot/{bot_name}/detail")
+async def get_bot_inspector_detail(
+    bot_name: str,
+    session_id: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    db: DbSession = Depends(get_db)
+):
+    import json
+    from src.db.models import Session, CurrentAgentState, AgentStateSnapshot, EdgeState, InterventionLog
+
+    if session_id is None:
+        latest_session = db.query(Session).order_by(Session.id.desc()).first()
+        session_id = latest_session.id if latest_session else None
+
+    current_state = db.query(CurrentAgentState).filter(
+        CurrentAgentState.session_id == session_id,
+        CurrentAgentState.bot_name == bot_name
+    ).first()
+
+    def safe_load(val):
+        try:
+            return json.loads(val) if val else []
+        except:
+            return []
+
+    def safe_load_dict(val):
+        try:
+            return json.loads(val) if val else {}
+        except:
+            return {}
+
+    raw_tensors = {}
+    if current_state:
+        raw_tensors = {
+            "traits": safe_load(current_state.traits_json),
+            "states": safe_load(current_state.states_json),
+            "affect": safe_load(current_state.affect_json),
+            "memory": safe_load(current_state.memory_json),
+            "opinion": safe_load(current_state.opinion_json),
+            "power": safe_load(current_state.power_json),
+            "residual": safe_load(current_state.residual_json)
+        }
+
     # Time series (reverse order so oldest first)
+    snapshots = db.query(AgentStateSnapshot).filter(
+        AgentStateSnapshot.session_id == session_id,
+        AgentStateSnapshot.bot_name == bot_name
+    ).order_by(AgentStateSnapshot.turn_index.desc()).limit(limit).all()
+    
     time_series = []
     for snap in reversed(snapshots):
         time_series.append({
@@ -247,12 +323,6 @@ async def get_bot_inspector_detail(
         (EdgeState.source_bot == bot_name) | (EdgeState.target_bot == bot_name)
     ).all()
     
-    def safe_load_dict(val):
-        try:
-            return json.loads(val) if val else {}
-        except:
-            return {}
-
     edges_data = [{"source": e.source_bot, "target": e.target_bot, "relation": safe_load_dict(e.relation_json)} for e in edges]
 
     # Interventions
@@ -265,17 +335,7 @@ async def get_bot_inspector_detail(
     return {
         "bot_name": bot_name,
         "session_id": session_id,
-        "updated_at": current_state.updated_at.strftime("%Y-%m-%d %H:%M:%S") if current_state and current_state.updated_at else None,
-        "phase": "shadow_updater_1A",
-        "active_dims": ["affect", "opinion", "power"],
-        "legacy_state": {
-            "persona": persona,
-            "current_directive": current_directive,
-            "effective_anger": effective_anger,
-            "anger_targets": anger_dict
-        },
-        "lpde_tensors": lpde_tensors,
-        "deltas": deltas,
+        "raw_tensors": raw_tensors,
         "time_series": time_series,
         "edges": edges_data,
         "interventions": interventions_data
@@ -317,36 +377,36 @@ async def control_new():
 @app.post("/api/control/pause")
 async def control_pause():
     if state_manager.state == SystemState.IDLE:
-        return {"error": "실행 중인 세션이 없습니다."}
+        return {"error": "No running session found."}
     if state_manager.state in [SystemState.PAUSING, SystemState.PAUSED]:
-        return {"error": "이미 중단 중이거나 중단된 상태입니다."}
+        return {"error": "Session is already pausing or paused."}
     state_manager.set_state(SystemState.PAUSING)
     return {"message": "Pausing session..."}
 
 @app.post("/api/control/resume")
 async def control_resume():
     if state_manager.state == SystemState.IDLE:
-        return {"error": "진행 중인 세션이 없습니다. 경고: 새로 시작하거나 이어하기를 이용하세요."}
+        return {"error": "No active session found. Please start a new session or restart an existing one."}
     if state_manager.state == SystemState.RUNNING:
-        return {"error": "이미 실행 중입니다."}
+        return {"error": "Session is already running."}
     state_manager.set_state(SystemState.RUNNING)
     return {"message": "Session resumed"}
 
 @app.post("/api/control/stop")
 async def control_stop():
     if state_manager.state == SystemState.IDLE:
-        return {"error": "실행 중인 세션이 없습니다."}
+        return {"error": "No running session found."}
     state_manager.set_state(SystemState.STOPPING)
     return {"message": "Stopping session..."}
 
 @app.post("/api/control/restart/{post_id}")
 async def control_restart(post_id: int, db: DbSession = Depends(get_db)):
     if state_manager.state != SystemState.IDLE:
-        return {"error": "명령어 수행중입니다. 동작 못합니다."}
+        return {"error": "System is currently busy processing another command."}
         
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
-        return {"error": f"글 번호 {post_id}번을 찾을 수 없습니다."}
+        return {"error": f"Post #{post_id} not found."}
         
     session_id = post.session_id
     state_manager.set_state(SystemState.RUNNING)

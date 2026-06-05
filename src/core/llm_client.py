@@ -6,7 +6,7 @@ logger = logging.getLogger("LLMClient")
 class LLMClient:
     def __init__(self, base_url: str):
         self.base_url = base_url
-        self.timeout = 180.0
+        self.timeout = 600.0
 
     async def generate_completion(
         self,
