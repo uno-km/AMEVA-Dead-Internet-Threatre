@@ -176,7 +176,7 @@ services:
       - "8102:8080"
     volumes:
       - ../../models:/models
-    command: -m /models/qwen2.5-0.5b.gguf -c 2048 --host 0.0.0.0 --port 8080
+    command: -m /models/qwen1.5-1.8b-chat-q4_k_m.gguf -c 2048 --host 0.0.0.0 --port 8080
     networks:
       - ameva_net
     restart: no
@@ -188,7 +188,7 @@ services:
       - "8103:8080"
     volumes:
       - ../../models:/models
-    command: -m /models/qwen2.5-0.5b.gguf -c 2048 --host 0.0.0.0 --port 8080
+    command: -m /models/qwen1.5-1.8b-chat-q4_k_m.gguf -c 2048 --host 0.0.0.0 --port 8080
     networks:
       - ameva_net
     restart: no
@@ -200,7 +200,7 @@ services:
       - "8104:8080"
     volumes:
       - ../../models:/models
-    command: -m /models/qwen2.5-0.5b.gguf -c 2048 --host 0.0.0.0 --port 8080
+    command: -m /models/qwen1.5-1.8b-chat-q4_k_m.gguf -c 2048 --host 0.0.0.0 --port 8080
     networks:
       - ameva_net
     restart: no
@@ -398,6 +398,198 @@ async def get_lpde_states(
     return {
         "session_id": session_id,
         "lpde_states": results
+    }
+
+@app.get("/api/sessions")
+async def get_sessions(db: DbSession = Depends(get_db)):
+    from src.db.models import Session
+    sessions = db.query(Session).order_by(Session.id.desc()).all()
+    return [{"id": s.id, "status": s.status, "created_at": s.created_at.strftime("%Y-%m-%d %H:%M:%S")} for s in sessions]
+
+@app.get("/api/lpde/bot/{bot_name}/summary")
+async def get_bot_inspector_summary(
+    bot_name: str,
+    session_id: int | None = Query(default=None),
+    db: DbSession = Depends(get_db)
+):
+    import json
+    from src.db.models import Session, BotState, CurrentAgentState, AgentStateSnapshot
+    from src.orchestration.runner import calculate_effective_anger
+
+    if session_id is None:
+        latest_session = db.query(Session).order_by(Session.id.desc()).first()
+        session_id = latest_session.id if latest_session else None
+
+    # Base legacy state
+    bot_state = db.query(BotState).filter(BotState.bot_name == bot_name).first()
+    persona = bot_state.persona if bot_state else ""
+    current_directive = bot_state.current_directive if bot_state else ""
+    try:
+        anger_dict = json.loads(bot_state.anger_targets) if bot_state and bot_state.anger_targets else {}
+    except:
+        anger_dict = {}
+    effective_anger = calculate_effective_anger(anger_dict)
+
+    current_state = db.query(CurrentAgentState).filter(
+        CurrentAgentState.session_id == session_id,
+        CurrentAgentState.bot_name == bot_name
+    ).first()
+
+    def safe_load(val):
+        try:
+            return json.loads(val) if val else []
+        except:
+            return []
+
+    # Deltas
+    snapshots = db.query(AgentStateSnapshot).filter(
+        AgentStateSnapshot.session_id == session_id,
+        AgentStateSnapshot.bot_name == bot_name
+    ).order_by(AgentStateSnapshot.turn_index.desc()).limit(2).all()
+    
+    deltas = {"affect": None, "opinion": None, "power": None}
+    if len(snapshots) >= 2:
+        latest_snap = snapshots[0]
+        prev_snap = snapshots[1]
+        
+        def calc_delta(latest_val, prev_val):
+            l_list = safe_load(latest_val)
+            p_list = safe_load(prev_val)
+            res = []
+            for l, p in zip(l_list, p_list):
+                if isinstance(l, (int, float)) and isinstance(p, (int, float)):
+                    val = round(l - p, 3)
+                    res.append(val)
+                else:
+                    res.append(0)
+            return res
+            
+        deltas = {
+            "affect": calc_delta(latest_snap.affect_json, prev_snap.affect_json),
+            "opinion": calc_delta(latest_snap.opinion_json, prev_snap.opinion_json),
+            "power": calc_delta(latest_snap.power_json, prev_snap.power_json)
+        }
+
+    # Empty state handling
+    if not current_state:
+        return {
+            "bot_name": bot_name,
+            "session_id": session_id,
+            "phase": "shadow_updater_1A",
+            "active_dims": ["affect", "opinion", "power"],
+            "message": "No LPDE state yet for this session",
+            "legacy_state": {
+                "persona": persona,
+                "current_directive": current_directive,
+                "effective_anger": effective_anger,
+                "anger_targets": anger_dict
+            },
+            "lpde_tensors": {"affect": [], "opinion": [], "power": []},
+            "deltas": deltas
+        }
+
+    lpde_tensors = {
+        "affect": safe_load(current_state.affect_json),
+        "opinion": safe_load(current_state.opinion_json),
+        "power": safe_load(current_state.power_json)
+    }
+
+    return {
+        "bot_name": bot_name,
+        "session_id": session_id,
+        "updated_at": current_state.updated_at.strftime("%Y-%m-%d %H:%M:%S") if current_state.updated_at else None,
+        "phase": "shadow_updater_1A",
+        "active_dims": ["affect", "opinion", "power"],
+        "legacy_state": {
+            "persona": persona,
+            "current_directive": current_directive,
+            "effective_anger": effective_anger,
+            "anger_targets": anger_dict
+        },
+        "lpde_tensors": lpde_tensors,
+        "deltas": deltas
+    }
+
+@app.get("/api/lpde/bot/{bot_name}/detail")
+async def get_bot_inspector_detail(
+    bot_name: str,
+    session_id: int | None = Query(default=None),
+    limit: int = Query(default=50, ge=1, le=100),
+    db: DbSession = Depends(get_db)
+):
+    import json
+    from src.db.models import Session, CurrentAgentState, AgentStateSnapshot, EdgeState, InterventionLog
+
+    if session_id is None:
+        latest_session = db.query(Session).order_by(Session.id.desc()).first()
+        session_id = latest_session.id if latest_session else None
+
+    current_state = db.query(CurrentAgentState).filter(
+        CurrentAgentState.session_id == session_id,
+        CurrentAgentState.bot_name == bot_name
+    ).first()
+
+    def safe_load(val):
+        try:
+            return json.loads(val) if val else []
+        except:
+            return []
+
+    def safe_load_dict(val):
+        try:
+            return json.loads(val) if val else {}
+        except:
+            return {}
+
+    raw_tensors = {}
+    if current_state:
+        raw_tensors = {
+            "traits": safe_load(current_state.traits_json),
+            "states": safe_load(current_state.states_json),
+            "affect": safe_load(current_state.affect_json),
+            "memory": safe_load(current_state.memory_json),
+            "opinion": safe_load(current_state.opinion_json),
+            "power": safe_load(current_state.power_json),
+            "residual": safe_load(current_state.residual_json)
+        }
+
+    # Time series (reverse order so oldest first)
+    snapshots = db.query(AgentStateSnapshot).filter(
+        AgentStateSnapshot.session_id == session_id,
+        AgentStateSnapshot.bot_name == bot_name
+    ).order_by(AgentStateSnapshot.turn_index.desc()).limit(limit).all()
+    
+    time_series = []
+    for snap in reversed(snapshots):
+        time_series.append({
+            "turn_index": snap.turn_index,
+            "affect": safe_load(snap.affect_json),
+            "opinion": safe_load(snap.opinion_json),
+            "power": safe_load(snap.power_json)
+        })
+
+    # Edges
+    edges = db.query(EdgeState).filter(
+        EdgeState.session_id == session_id,
+        (EdgeState.source_bot == bot_name) | (EdgeState.target_bot == bot_name)
+    ).all()
+    
+    edges_data = [{"source": e.source_bot, "target": e.target_bot, "relation": safe_load_dict(e.relation_json)} for e in edges]
+
+    # Interventions
+    interventions = db.query(InterventionLog).filter(
+        InterventionLog.session_id == session_id,
+        InterventionLog.target_bot == bot_name
+    ).order_by(InterventionLog.turn_index.desc()).all()
+    interventions_data = [{"turn_index": i.turn_index, "kind": i.kind, "delta": safe_load_dict(i.delta_json), "reason": i.reason} for i in interventions]
+
+    return {
+        "bot_name": bot_name,
+        "session_id": session_id,
+        "raw_tensors": raw_tensors,
+        "time_series": time_series,
+        "edges": edges_data,
+        "interventions": interventions_data
     }
 
 @app.get("/api/system/status")
@@ -612,9 +804,17 @@ logger = logging.getLogger("LLMClient")
 class LLMClient:
     def __init__(self, base_url: str):
         self.base_url = base_url
-        self.timeout = 60.0
+        self.timeout = 600.0
 
-    async def generate_completion(self, system_prompt: str, user_prompt: str, max_tokens: int = 512, stop=None) -> str:
+    async def generate_completion(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        max_tokens: int = 512,
+        stop=None,
+        timeout: float = None,
+        response_format=None
+    ) -> str:
         """
         Llama.cpp Server API (/v1/chat/completions) 호출
         """
@@ -630,10 +830,14 @@ class LLMClient:
         }
         if stop:
             payload["stop"] = stop
+        if response_format:
+            payload["response_format"] = response_format
+
+        req_timeout = timeout if timeout is not None else self.timeout
 
         try:
-            logger.info(f"[NETWORK] Routing data to {self.base_url}/v1/chat/completions (Max Tokens: {max_tokens})")
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            logger.info(f"[NETWORK] Routing data to {self.base_url}/v1/chat/completions (Max Tokens: {max_tokens}, Timeout: {req_timeout})")
+            async with httpx.AsyncClient(timeout=req_timeout) as client:
                 response = await client.post(url, json=payload)
                 response.raise_for_status()
                 data = response.json()
@@ -930,6 +1134,8 @@ from src.db.models import Comment
 
 logger = logging.getLogger("PromptAdapter")
 
+GIST_CACHE = {}  # maps (bot_name, raw_content) -> gist string
+
 class PromptAdapter:
     """
     LLM이 이전 대화를 '대본(Script)'으로 착각하고 다른 봇의 발화를 이어쓰는 
@@ -938,11 +1144,34 @@ class PromptAdapter:
     def __init__(self):
         pass
 
-    def build_structured_history(self, items: List[dict]) -> str:
+    async def _generate_gist_via_god_llm(self, bot_name: str, msg: str) -> str:
+        # Heuristic fallback
+        fallback = msg[:50] + "..." if len(msg) > 50 else msg
+        try:
+            from src.orchestration.runner import god_llm
+            prompt = (
+                f"Analyze this statement by {bot_name} and summarize their stance/core opinion in one short English phrase (5-10 words).\n"
+                f"Do NOT write any meta text, intro, or quotes. Output ONLY the short summary phrase.\n"
+                f"Statement: \"{msg}\"\n"
+                f"Example: Disagrees with animal sanctuaries and demands stricter regulations."
+            )
+            result = await god_llm.generate_completion(
+                "You are an AI that summarizes forum comments into short stance descriptions.",
+                prompt,
+                max_tokens=30
+            )
+            gist = result.strip().strip('"\'')
+            if gist:
+                return gist
+        except Exception as e:
+            logger.warning(f"Failed to generate gist via God LLM: {e}")
+        return fallback
+
+    async def build_structured_history(self, items: List[dict]) -> str:
         """
-        기존 "bot_1: 텍스트" 형식을 탈피하고 구조화된 로그 형태로 변환합니다.
+        기존 "bot_1: 텍스트" 형식을 탈피하고 요약/스탠스 로그 형태로 변환합니다.
         items는 {"bot_name": ..., "message": ...} 형태의 딕셔너리 리스트입니다.
-        출력 포맷: '- speaker=... | message="..."'
+        출력 포맷: '- bot_name\'s stance: [요약]'
         """
         if not items:
             return "No previous conversation."
@@ -951,10 +1180,15 @@ class PromptAdapter:
         for item in items:
             bot_name = item.get("bot_name", "Unknown")
             msg = item.get("message", "").strip()
-            import json
-            msg_json = json.dumps(msg, ensure_ascii=False)
-            # 봇 이름이나 사람 이름을 명확히 분리하고, message를 데이터 필드로 취급
-            line = f'- speaker={bot_name} | message={msg_json}'
+            
+            cache_key = (bot_name, msg)
+            if cache_key in GIST_CACHE:
+                gist = GIST_CACHE[cache_key]
+            else:
+                gist = await self._generate_gist_via_god_llm(bot_name, msg)
+                GIST_CACHE[cache_key] = gist
+                
+            line = f"- {bot_name}'s stance: {gist}"
             structured_lines.append(line)
         
         return "\n".join(structured_lines)
@@ -1856,45 +2090,71 @@ async def create_post_with_main_llm(db, session):
     logger.info("[ROUTING] Requesting llm-main (8B) to generate a new topic...")
 
     post_content = ""
+    title = "새로운 논쟁 거리"
 
     try:
-        async with llm_lifecycle("ameva-llm-main", 8101) as is_ready:
+        async with llm_lifecycle("ameva-llm-main", 8101, timeout=180) as is_ready:
             if not is_ready:
                 logger.warning("[LLM-MAIN] main container was not ready. Falling back to static topics.")
             else:
-                post_content = await main_llm.generate_completion(
-                    "You are an anonymous community forum user. Write a short, controversial post on a random topic. Write in English only.",
-                    "Write a new post.",
-                    max_tokens=300
+                prompt = (
+                    "You are an anonymous community forum user. Write a highly engaging, catchy, and controversial post on a random trending/opinionated topic. Write in English only.\n"
+                    "You MUST output your response ONLY as a valid JSON object in the exact format below, with no other text:\n"
+                    "{\n"
+                    '  "title": "A highly compelling and controversial title",\n'
+                    '  "content": "Your post content details..."\n'
+                    "}"
                 )
+                result = await main_llm.generate_completion(
+                    "You are an AI that writes forum posts. You only respond in JSON format.",
+                    prompt,
+                    max_tokens=500,
+                    timeout=180.0,
+                    response_format={"type": "json_object"}
+                )
+                
+                # JSON 파싱 시도
+                if result:
+                    result = result.strip()
+                    json_str = None
+                    markdown_match = re.search(r"```(?:json)?\s*(.*?)\s*```", result, re.DOTALL)
+                    if markdown_match:
+                        json_str = markdown_match.group(1).strip()
+                    else:
+                        start_idx = result.find("{")
+                        end_idx = result.rfind("}")
+                        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+                            json_str = result[start_idx:end_idx + 1]
+                    
+                    if json_str:
+                        try:
+                            data = json.loads(json_str)
+                            title = data.get("title", title).strip()
+                            post_content = data.get("content", "").strip()
+                        except json.JSONDecodeError as e:
+                            logger.error(f"[LLM-MAIN] JSON 디코딩 실패. Raw: {result} | Error: {e}")
+                    else:
+                        logger.error(f"[LLM-MAIN] JSON 블록을 찾지 못했습니다. Raw: {result}")
     except Exception as e:
         logger.error(f"[LLM-MAIN] Error generating topic: {e}")
 
-    post_content = normalize_post_content(post_content)
-
-    title = "새로운 논쟁 거리"
-    if post_content:
-        # Extract title if the LLM output something like **Title:** ...
-        title_match = re.search(r'\*\*Title:\*\*\s*([^\n]+)', post_content, re.IGNORECASE)
-        if title_match:
-            title = title_match.group(1).strip()
-            # Remove the title line from content
-            post_content = re.sub(r'\*\*Title:\*\*\s*[^\n]+\n?', '', post_content, flags=re.IGNORECASE).strip()
-        
-        # Remove "Posted by: ..." if present
-        post_content = re.sub(r'\*\*Posted by:\*\*\s*[^\n]+\n?', '', post_content, flags=re.IGNORECASE).strip()
-    else:
+    # Fallback 로직
+    if not post_content:
         fallback_topics = [
-            "Is it really a good thing that AI is replacing human jobs?",
-            "Do you agree that the younger generation has no manners these days?",
-            "With housing prices so high, is marriage really necessary?",
-            "What's more important: academic pedigree or actual skills? Let's be honest.",
-            "Are people who raise pets more selfish than people who raise children?",
-            "Should mandatory military service be abolished or maintained?",
-            "Can being a YouTuber or streamer really be considered a real job?",
-            "Is the minimum wage for convenience store workers too low, or appropriate?",
+            ("AI and Jobs", "Is it really a good thing that AI is replacing human jobs?"),
+            ("Modern Manners", "Do you agree that the younger generation has no manners these days?"),
+            ("Marriage in Modern Times", "With housing prices so high, is marriage really necessary?"),
+            ("Pedigree vs Skills", "What's more important: academic pedigree or actual skills? Let's be honest."),
+            ("Pets vs Children", "Are people who raise pets more selfish than people who raise children?"),
+            ("Military Service", "Should mandatory military service be abolished or maintained?"),
+            ("Content Creators", "Can being a YouTuber or streamer really be considered a real job?"),
+            ("Minimum Wage", "Is the minimum wage for convenience store workers too low, or appropriate?"),
         ]
-        post_content = random.choice(fallback_topics)
+        fallback_item = random.choice(fallback_topics)
+        title = fallback_item[0]
+        post_content = fallback_item[1]
+
+    post_content = normalize_post_content(post_content)
 
     post = Post(session_id=session.id, title=title, content=post_content)
     db.add(post)
@@ -2022,7 +2282,7 @@ async def create_initial_stances(db, post):
 
     return stances, last_comment, last_speaker
 
-def build_turn_context(db, post, current_bot, use_structured=False):
+async def build_turn_context(db, post, current_bot, use_structured=False):
     bot_state = get_or_create_bot_state(db, current_bot)
 
     anger_dict = safe_json_loads(bot_state.anger_targets, {})
@@ -2047,7 +2307,7 @@ def build_turn_context(db, post, current_bot, use_structured=False):
         .all()
     )
 
-    def _format_recent_history(items):
+    async def _format_recent_history(items):
         valid_items = []
         for item in reversed(items):
             if not item or not item.content:
@@ -2059,14 +2319,14 @@ def build_turn_context(db, post, current_bot, use_structured=False):
 
         if use_structured:
             from src.core.prompt_adapter import prompt_adapter
-            return prompt_adapter.build_structured_history(valid_items)
+            return await prompt_adapter.build_structured_history(valid_items)
         else:
             lines = []
             for item in valid_items:
                 lines.append(f"{item['bot_name']}: {item['message']}")
             return "\n".join(lines).strip()
 
-    recent_history = _format_recent_history(recent_c)
+    recent_history = await _format_recent_history(recent_c)
 
     if len(recent_history) > 600:
         recent_history = recent_history[-600:]
@@ -2088,7 +2348,7 @@ async def generate_relay_reply(db, post, current_bot, turn_idx=0):
     from src.core.personality_engine import personality_engine
     personality_engine.update_fast_state(db, post.session_id, current_bot, turn_index=turn_idx)
 
-    safe_anger_dict, eff_anger, emotion_directive, recent_history = build_turn_context(
+    safe_anger_dict, eff_anger, emotion_directive, recent_history = await build_turn_context(
         db, post, current_bot, use_structured=LPDE_STRUCTURED_HISTORY
     )
     god_directive = await generate_director_directive(db, current_bot, recent_history, eff_anger)
@@ -2139,7 +2399,10 @@ async def generate_relay_reply(db, post, current_bot, turn_idx=0):
             "\nbot_1:", "\nbot_2:", "\nbot_3:",
             "\nBot_1:", "\nBot_2:", "\nBot_3:",
             "\nspeaker=", "\nSpeaker=",
-            "\n- speaker="
+            "\n- speaker=",
+            "| message=", "|message=",
+            "- speaker=", "speaker=",
+            "'s stance:", "stance:"
         ]
     )
     reply_content = sanitize_generated_reply(reply_content)
@@ -2249,16 +2512,17 @@ def get_or_create_bot_state(db, current_bot):
 
 def save_session_bot_state(db, session_id: int, turn_idx: int):
     states = db.query(BotState).all()
-    for s in states:
-        record = SessionBotState(
+    records = [
+        SessionBotState(
             session_id=session_id,
             turn_index=turn_idx,
             bot_name=s.bot_name,
             persona=s.persona,
             current_directive=s.current_directive,
             anger_targets=s.anger_targets
-        )
-        db.add(record)
+        ) for s in states
+    ]
+    db.add_all(records)
     db.commit()
 
 async def run_relay_phase(db, session, post, last_comment, last_speaker, start_turn_idx=0):
@@ -2350,6 +2614,28 @@ def sanitize_generated_reply(text: str) -> str:
         
     # Remove hallucinated bot prefixes
     text = re.sub(r'^bot_\[?[123]\]?:\s*', '', text, flags=re.IGNORECASE)
+
+    # 1) 제거: | message= 및 선행 : 제거
+    # e.g., speaker=bot_1 | message="..." or | message="..."
+    text = re.sub(r'^(?:-\s*)?speaker=[^|]+\|\s*message=\s*["\']?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\|\s*message=\s*["\']?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'speaker=\s*["\']?', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'message=\s*["\']?', '', text, flags=re.IGNORECASE)
+    
+    # stance leakage 제거
+    text = re.sub(r'^bot_\[?[123]\]?\'s\s+stance\s*:\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'\'s\s+stance\s*:\s*', '', text, flags=re.IGNORECASE)
+    text = re.sub(r'stance\s*:\s*', '', text, flags=re.IGNORECASE)
+    
+    # 선행 : 제거 (leading colons and whitespace)
+    text = re.sub(r'^\s*:\s*', '', text)
+    
+    # 꼬리 따옴표가 홀수개일 때 정리
+    if text.endswith('"') or text.endswith("'"):
+        if text.count('"') % 2 != 0:
+            text = text.rstrip('"')
+        if text.count("'") % 2 != 0:
+            text = text.rstrip("'")
 
     # 1) 내부 지침 헤더 라인 제거
     text = re.sub(
