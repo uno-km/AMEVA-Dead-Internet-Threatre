@@ -41,6 +41,7 @@ class PersonalityEngine:
                 traits_json=json.dumps([0.0] * 22),
                 states_json=json.dumps([0.0] * 10),
                 affect_json=json.dumps([0.0, 0.0]), # [Valence, Arousal]
+                memory_json=json.dumps([0.0] * 8), # [Issue commitment, etc]
                 opinion_json=json.dumps([0.0, 0.0, 0.0, 0.0]), # [Stance, Gap, Moral]
                 power_json=json.dumps([0.0, 0.0]), # [SelfAppraisal, SystemicInfluence]
                 residual_json=json.dumps([0.0] * 16)

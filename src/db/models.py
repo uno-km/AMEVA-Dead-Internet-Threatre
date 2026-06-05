@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from src.db.database import Base
@@ -63,6 +63,9 @@ class SessionBotState(Base):
 class CurrentAgentState(Base):
     """현재 LPDE 에이전트 상태 (Shadow Mode)"""
     __tablename__ = 'current_agent_states'
+    __table_args__ = (
+        UniqueConstraint('session_id', 'bot_name', name='uq_current_agent_state_session_bot'),
+    )
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(Integer, ForeignKey('sessions.id'), index=True)
     bot_name = Column(String, index=True)

@@ -17,6 +17,9 @@ services:
       - PORT=8050
       - DATABASE_URL=sqlite:////AMEVA-DeadInternetSociety/ameva_society.db
       - PYTHONPATH=/AMEVA-DeadInternetSociety
+      - LPDE_STRUCTURED_HISTORY=true
+      - LPDE_FULL_PROMPT=false
+      - LPDE_LEGACY_PROMPT=false
     depends_on:
       - llm-main
       - llm-bot-1

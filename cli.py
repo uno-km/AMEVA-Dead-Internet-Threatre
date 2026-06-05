@@ -65,7 +65,7 @@ def main():
     print("  pause          - Soft pause the current session")
     print("  resume         - Resume a paused session")
     print("  stop           - Force stop the current session")
-    print("  restart <id>   - Restore and continue an old session")
+    print("  restart <post_id> - Restore and continue an old session")
     print("  exit           - Close this remote controller")
     print("========================================")
     
@@ -104,9 +104,9 @@ def main():
                 if len(user_input) > 1 and user_input[1].isdigit():
                     if send_command("restart", user_input[1]):
                         if wait_for_state("RUNNING", 10):
-                            print(f"[완료] {user_input[1]}번 세션 이어하기(RUNNING)를 시작합니다!")
+                            print(f"[완료] {user_input[1]}번 글(Post)의 세션 이어하기(RUNNING)를 시작합니다!")
                 else:
-                    print("Usage: restart <session_id>")
+                    print("Usage: restart <post_id>")
             else:
                 print(f"Unknown command: {cmd}")
         except KeyboardInterrupt:
