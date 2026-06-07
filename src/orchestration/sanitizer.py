@@ -54,6 +54,20 @@ def sanitize_generated_reply(text: str) -> str:
 
     text = text.strip()
 
+    # Reject entire output if it contains prompt leakage
+    leak_keywords = [
+        "STRICT COMPLIANCE RULES", 
+        "You are NOT an AI", 
+        "You are a highly cynical",
+        "You are an arrogant snob",
+        "You are a strict moral censor",
+        "Instruction:",
+        "Personality:",
+        "Act as an anonymous, toxic"
+    ]
+    if any(k.lower() in text.lower() for k in leak_keywords):
+        return ""
+
     for pattern, replacement in _PATTERNS:
         text = pattern.sub(replacement, text)
 

@@ -673,16 +673,18 @@ async def create_initial_stances(db, post):
             stance = opinion[0] if opinion else 0.0
 
             if stance > 0.3:
-                stance_instruction = "You strongly support/agree with the main argument of this post. Write a response expressing clear support."
+                stance_instruction = "You strongly support the post. Write a highly emotional, aggressive community comment (1-2 sentences) showing your support."
             elif stance < -0.3:
-                stance_instruction = "You strongly oppose/disagree with the main argument of this post. Write a response expressing clear opposition."
+                stance_instruction = "You strongly oppose the post. Write a cynical, hostile community comment (1-2 sentences) attacking the post's logic."
             else:
-                stance_instruction = "Your position is nuanced and flexible. Write a response reflecting a neutral, moderate, or balanced stance."
+                stance_instruction = "You are skeptical. Write a sarcastic or balanced community comment (1-2 sentences) pointing out nuances."
 
             prompt = (
                 f"Post Content: {post.content}\n\n"
-                f"Instruction: State your position on the above post clearly and concisely in 1-2 sentences. Reply in English.\n"
-                f"{stance_instruction}\n"
+                f"Instruction: Act as an anonymous, toxic internet user. Write a single short comment reacting to the post.\n"
+                f"CRITICAL: Do NOT use robotic templates like 'I strongly support/oppose the main argument of this post'. Be natural, informal, and highly opinionated.\n"
+                f"Reply in English.\n"
+                f"Your Stance: {stance_instruction}\n"
             )
 
             reply_content = await bot_client.generate_completion(
