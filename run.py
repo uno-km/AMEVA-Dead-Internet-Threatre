@@ -435,4 +435,4 @@ async def control_restart(post_id: int, db: DbSession = Depends(get_db)):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("run:app", host="0.0.0.0", port=8050, reload=True)
+    uvicorn.run("run:app", host="0.0.0.0", port=8050, reload=False)
