@@ -208,75 +208,44 @@ class PromptAdapter:
 
         # --- 1. Role Binding ---
         sections.append(
-            f"You are {current_bot}. You are a real human internet user engaged in an online debate."
+            f"You are {current_bot}. You are a sharp and opinionated internet user in an online debate."
         )
 
-        # --- 2. Persona (collapsed) ---
+        # --- 2. Persona ---
         if persona:
-            # Strip the common rules suffix to keep it compact
             persona_short = persona.split("[STRICT COMPLIANCE RULES")[0].strip()
-            if len(persona_short) > 200:
-                persona_short = persona_short[:200].rstrip() + "..."
-            sections.append(f"Personality:\n{persona_short}")
+            if len(persona_short) > 250:
+                persona_short = persona_short[:250].rstrip() + "..."
+            sections.append(f"Your Personality:\n{persona_short}\n(Behave according to your personality, but NEVER describe or mention it explicitly in your reply.)")
 
-        # --- 3. Current Internal State (NL decoded) ---
-        affect = lpde_state.get("affect", [0.0, 0.0])
+        # --- 3. LPDE Stance ---
         opinion = lpde_state.get("opinion", [0.0, 0.0, 0.0, 0.0])
-        power = lpde_state.get("power", [0.0, 0.0])
-
-        valence = affect[0] if len(affect) > 0 else 0.0
-        arousal = affect[1] if len(affect) > 1 else 0.0
         stance = opinion[0] if len(opinion) > 0 else 0.0
-        self_appraisal = power[0] if len(power) > 0 else 0.0
-        influence = power[1] if len(power) > 1 else 0.0
-
-        state_lines = [
-            "Current Internal State:",
-            f"- {_decode_arousal(arousal)}",
-            f"- {_decode_valence(valence)}",
-            f"- {_decode_stance(stance)}",
-            f"- {_decode_self_appraisal(self_appraisal)}",
-            f"- {_decode_influence(influence)}",
-        ]
-
-        # Edge-based relationship descriptions
-        if target_bot and target_bot in edge_summary:
-            edge = edge_summary[target_bot]
-            trust = edge.get("trust", 0.0)
-            tension = edge.get("tension", 0.0)
-            state_lines.append(f"- {_decode_trust(trust, target_bot)}")
-            state_lines.append(f"- {_decode_tension(tension, target_bot)}")
-
-        sections.append("\n".join(state_lines))
+        
+        if stance > 0.3:
+            sections.append("Your Stance: You strongly support the main argument of the original topic.")
+        elif stance < -0.3:
+            sections.append("Your Stance: You strongly oppose the main argument of the original topic.")
+        else:
+            sections.append("Your Stance: You are skeptical and nuanced about the original topic.")
 
         # --- 4. Post Content ---
         if post_content:
-            post_short = post_content[:200].rstrip() + ("..." if len(post_content) > 200 else "")
-            sections.append(f"Topic being debated:\n{post_short}")
+            post_short = post_content[:300].rstrip() + ("..." if len(post_content) > 300 else "")
+            sections.append(f"Original Topic:\n{post_short}")
 
-        # --- 5. Recent History ---
+        # --- 5. Recent Conversation ---
         if recent_history and recent_history != "No previous conversation.":
             sections.append(f"Recent Conversation:\n{recent_history}")
 
-        # --- 6. Counter-Argument Enforcement (Optional) ---
-        if counter_arg_enabled and claim_snippet:
-            sections.append(
-                f"[MANDATORY REBUTTAL]\n"
-                f"The opponent just claimed: \"{claim_snippet}\"\n"
-                f"You MUST directly address this specific claim before stating your own position. "
-                f"Do NOT ignore it. Either refute it with evidence, partially concede, or ask a pointed follow-up question."
-            )
-
-        # --- 7. Director Hint (Optional) ---
-        if god_directive:
-            sections.append(f"Director Hint: {god_directive}")
-
-        # --- 8. Output Instructions ---
+        # --- 6. Instruction ---
         other_bots = [b for b in ["bot_1", "bot_2", "bot_3"] if b != current_bot]
         sections.append(
             f"Instruction:\n"
-            f"Write a 1-sentence reply in English defending your stance. Address the last point directly.\n"
-            f"Do NOT use prefixes like 'bot_x:'.\n"
+            f"Write a sharp, confrontational, but natural internet-style reply (1-2 sentences) in English.\n"
+            f"CRITICAL: Base your reply specifically on the opponent's last claim. Do NOT just repeat generic statements.\n"
+            f"Avoid threats, hate speech, or policy-violating content.\n"
+            f"Do NOT output prefixes like 'bot_x:'.\n"
             f"Mention exactly one of {', '.join(['@' + b for b in other_bots])} at the end of your message."
         )
 
