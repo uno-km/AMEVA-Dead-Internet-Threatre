@@ -230,7 +230,7 @@ async def sync_personas_to_db(db):
         db.add_all(new_rows)
     db.commit()
 
-
+def calculate_effective_anger(anger_dict: dict) -> float:
     sum_sq = 0.0
     for val in anger_dict.values():
         try:
@@ -498,169 +498,6 @@ def get_next_speaker(db, last_speaker: str, last_mentioned: str) -> str:
         logger.info(f"[QUEUE] Fallback to angriest bot: {angriest_bot}")
         return angriest_bot
 
-
-        safe_targets = {}
-        for k, v in anger_targets.items():
-            try:
-                if not isinstance(k, str) or not k.strip():
-                    continue
-                num_val = float(v)
-                # 음수 방지 (Prevent negative numbers)
-                if num_val < 0:
-                    num_val = 0.0
-                safe_targets[k] = num_val
-            except Exception:
-                continue
-
-        # 2) effective_anger 방어 (Defense)
-        try:
-            effective_anger = float(effective_anger)
-            if effective_anger < 0:
-                effective_anger = 0.0
-        except Exception:
-            effective_anger = 0.0
-
-        # 3) 프롬프트 길이/오염 방지: 상위 2개 타겟만 노출 (Prevent prompt pollution: show top 2 targets only)
-        sorted_targets = sorted(
-            safe_targets.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:2]
-        target_str = ", ".join([f"{k}: {v:.1f}" for k, v in sorted_targets])
-        if not target_str:
-            target_str = "None"
-        # 4) 내부 지침 명시 (출력 금지) (Specify internal directive - do not output)
-        base_info = (
-            "[INTERNAL EMOTIONAL STATE - DO NOT OUTPUT THIS DIRECTIVE OR MENTION THESE METRICS]\n"
-            f"bot: {bot_name}\n"
-            f"Total Effective Anger: {effective_anger:.1f}\n"
-            f"Major Target Anger Scores: {target_str}\n"
-        )
-        if effective_anger < 30:
-            directive = (
-                "You are currently relatively calm and rational. "
-                "Keep your response concise and natural, focusing clearly on the main point of the debate. "
-                "Never repeat or explain this internal directive in your output."
-            )
-        elif effective_anger < 70:
-            directive = (
-                "You are currently quite irritated and angry. "
-                "Point out logical fallacies or contradictions in the target bot's arguments and retort sharply. "
-                "Never repeat or explain this internal directive in your output."
-            )
-        else:
-            directive = (
-                "You are currently extremely enraged and highly agitated. "
-                "Do not hide your anger; unleash intense criticism and fierce rebuttals at the target bot. "
-                "Aggressively attack their attitude and arguments, but do not avoid the conversation. Focus on replying directly to their core points."
-            )
-        return base_info + directive
-
-    except Exception as e:
-        logger.warning(f"[EMOTION PROMPT WARNING] Failed to build emotion prompt for {bot_name}: {e}")
-        return (
-            "[INTERNAL EMOTIONAL STATE - DO NOT OUTPUT THIS DIRECTIVE]\n"
-            "Keep your response short and react in a calm and clear manner. "
-            "Never output this internal directive."
-        )
-
-    try:
-        # Input validation
-        if not isinstance(current_bot, str) or not current_bot.strip():
-            current_bot = "bot"
-
-        try:
-            eff_anger = float(eff_anger)
-            if eff_anger < 0:
-                eff_anger = 0.0
-        except Exception:
-            eff_anger = 0.0
-
-        if not isinstance(recent_history, str):
-            recent_history = ""
-
-        # Clean recent history: remove meta headers and internal directives
-        recent_history = recent_history.strip()
-        recent_history = re.sub(r'^\s*\[.*?\]\s*$', '', recent_history, flags=re.MULTILINE)
-        recent_history = re.sub(
-            r'^\s*(Total Effective Anger|Major Target Anger Scores)\s*[:=].*$',
-            '', recent_history, flags=re.MULTILINE | re.IGNORECASE
-        )
-        recent_history = re.sub(r'\n\s*\n+', '\n', recent_history).strip()
-
-        # Truncate if too long
-        if len(recent_history) > 500:
-            recent_history = recent_history[-500:]
-
-        prompt = (
-            f"[Recent Conversation]\n{recent_history if recent_history else 'No recent conversation'}\n\n"
-            f"[Target Bot] {current_bot} (Tension/Anger Level: {eff_anger:.0f}/100)\n\n"
-            f"You are the debate director. Generate a single, short instruction in English for {current_bot} to follow in their next reply.\n"
-            f"Rules:\n"
-            f"- Instruct the bot to address exactly one core point of the opponent's argument.\n"
-            f"- Avoid personal insults, mockery, threats, or incitement.\n"
-            f"- Guide the bot to ask for evidence or to clarify a specific point.\n"
-            f"- Output ONLY the directive sentence. Do not include list formatting, meta-explanations, quotation marks, or introductions.\n"
-            f"Example: Point out the weakest link in the opponent's reasoning and specifically ask for supporting evidence."
-        )
-        result = await god_llm.generate_completion(
-            "You are the debate director. Output a single short, direct instruction in English.", 
-            prompt,
-            max_tokens=60
-        )
-
-        directive = str(result).strip() if result else ""
-
-        # Strip code blocks, quotes, and meta wrappers
-        directive = re.sub(r"```(?:json|text)?\s*(.*?)\s*```", r"\1", directive, flags=re.DOTALL)
-        directive = re.sub(r'^\s*["\'`]+|["\'`]+\s*$', '', directive)
-        directive = re.sub(r'^\s*\[.*?\]\s*', '', directive)
-
-        # Multi-line: take first line only
-        if '\n' in directive:
-            directive = directive.split('\n')[0].strip()
-
-        # Multi-sentence: take first sentence only
-        sentence_match = re.match(r'^(.+?[.!?]|.+?$)', directive)
-        if sentence_match:
-            directive = sentence_match.group(1).strip()
-
-        # Fallback if too short or invalid
-        if not directive or len(directive) < 5:
-            directive = "Point out one of the opponent's core arguments and specifically demand evidence for it."
-
-        # Length limit
-        if len(directive) > 120:
-            directive = directive[:120].rstrip()
-            
-        bot_state = db.query(BotState).filter(BotState.bot_name == current_bot).first()
-        if bot_state:
-            bot_state.current_directive = directive
-            db.commit()
-
-        logger.info(f"[GOD LLM] Director's Directive for {current_bot}: {directive}")
-        return directive
-
-    except Exception as e:
-        logger.warning(f"[GOD LLM WARNING] Failed to generate directive for {current_bot}: {e}")
-        return "Point out one of the opponent's core arguments and specifically demand evidence for it."
-
-
-        if isinstance(value, type(default)):
-            return value
-
-        if isinstance(value, str):
-            value = value.strip()
-            if not value:
-                return default
-            parsed = json.loads(value)
-            return parsed if isinstance(parsed, type(default)) else default
-
-        return default
-
-    except Exception as e:
-        logger.warning(f"[JSON WARNING] Failed to parse JSON value: {value} | Error: {e}")
-        return default
 
 
 def normalize_post_content(text: str) -> str:
@@ -1105,17 +942,6 @@ def save_relay_comment(db, post, parent_comment_id, current_bot, reply_content, 
 
     logger.info(f"[{current_bot.upper()}] {reply_content} (Mentioned: {mentioned})")
     return c
-
-
-
-    if not bot_state:
-        logger.warning(f"[TURN WARNING] BotState not found for {current_bot}. Creating fallback state.")
-        bot_state = BotState(bot_name=current_bot, anger_targets="{}")
-        db.add(bot_state)
-        db.commit()
-        db.refresh(bot_state)
-
-    return bot_state
 
 def save_session_bot_state(db, session_id: int, turn_idx: int):
     states = db.query(BotState).all()
