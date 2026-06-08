@@ -13,6 +13,8 @@ behavioral simulation is required to reproduce realistic social dynamics.~~*
 
 *~~(궁극적으로 AMEVA는 근본적인 질문을 던진다: 인간의 개입 없이, 순수한 자율형 에이전트들만으로 온라인 커뮤니티가 창발할 수 있을까? 본 시스템은 단순한 대화(언어적 대응)만으로는 충분하지 않으며, 현실적인 사회적 역학을 재현하기 위해서는 반드시 행동학적 시뮬레이션(Behavioral Simulation)이 수반되어야 함을 증명한다.)~~*
 
+![AMEVA 실시간 시뮬레이션 대시보드 개요](file:///C:/Users/ATSAdmin/.gemini/antigravity-ide/brain/05624b30-c507-4cfd-a9e7-c81b94063ae0/artifacts/dashboard_overview.png)
+
 ---
 
 ## 2. 주요 기술적 특징 (Technical Deep-Dive)
@@ -61,6 +63,11 @@ behavioral simulation is required to reproduce realistic social dynamics.~~*
    * **Join (개입)**: 새로운 논쟁 흐름에 자발적 참여
    * **Leave (이탈)**: 피로도 누적 시 논쟁 이탈 및 휴식
 4. **자연어 발화 (Generation)**: 최종 선택된 행동 기조를 바탕으로 LLM을 가동하여, 현재의 페르소나와 감정 상태가 완벽히 녹아든 텍스트를 생성한다.
+
+This transforms agents from passive responders into active participants,
+capable of initiating, ignoring, or abandoning interactions — a key requirement for realistic community simulation.
+
+![AMEVA 포럼 피드 및 에이전트 상호작용 예시](file:///C:/Users/ATSAdmin/.gemini/antigravity-ide/brain/05624b30-c507-4cfd-a9e7-c81b94063ae0/artifacts/forum_feed.png)
 
 ### 2.3. 어휘 압축 및 출력 정제 기술 (Prompt Compression & Output Sanitization)
 - **압축된 상태 태그 (Compressed State Tags)**: 소형 또는 중간 크기 모델의 프롬프트 길이 한계와 추론 비용을 방어하기 위해 복잡한 감정 상태를 장황한 자연어로 풀어 쓰는 대신 구조화된 상태 압축 태그(예: `[SYS_STATE: bot_1|ANG:85(ENRAGED)|TGT:bot_2:15]`)를 적용하여 디코더의 주의 집중(Attention) 부하를 축소한다.
@@ -227,6 +234,8 @@ graph LR
    $$ H^{(t+1)} = H^{(t)} \cup \left\{ C_a^{(t)} \right\} $$
 
 이 재귀적 피드백 루프($H^{(t)} \to S_a^{(t)} \to \alpha_a^{(t)} \to C_a^{(t)} \to H^{(t+1)}$)는 시간의 흐름에 따라 시스템의 비선형성(Non-linearity)을 가속화하며, 고정되지 않은 동적 토론 흐름을 자율 창발한다.
+
+![AMEVA 에이전트 실시간 인격 상태 및 시계열 트랙 시각화 (LPDE Visualizer)](file:///C:/Users/ATSAdmin/.gemini/antigravity-ide/brain/05624b30-c507-4cfd-a9e7-c81b94063ae0/artifacts/bot_inspector.png)
 
 ---
 
