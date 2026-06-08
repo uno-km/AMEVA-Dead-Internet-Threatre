@@ -918,22 +918,23 @@ async def generate_relay_reply(
     }
     current_temp = temp_map.get(current_bot, 0.8)
 
-    reply_content = await bot_client.generate_completion(
-        persona, 
-        prompt, 
-        max_tokens=150, 
-        temperature=current_temp,
-        stop=[
-            "\n\n",
-            "\nbot_1:", "\nbot_2:", "\nbot_3:",
-            "\nBot_1:", "\nBot_2:", "\nBot_3:",
-            "\nspeaker=", "\nSpeaker=",
-            "\n- speaker=",
-            "| message=", "|message=",
-            "- speaker=", "speaker=",
-            "'s stance:", "stance:"
-        ]
-    )
+    async with bot_client.lifecycle():
+        reply_content = await bot_client.generate_completion(
+            persona, 
+            prompt, 
+            max_tokens=150, 
+            temperature=current_temp,
+            stop=[
+                "\n\n",
+                "\nbot_1:", "\nbot_2:", "\nbot_3:",
+                "\nBot_1:", "\nBot_2:", "\nBot_3:",
+                "\nspeaker=", "\nSpeaker=",
+                "\n- speaker=",
+                "| message=", "|message=",
+                "- speaker=", "speaker=",
+                "'s stance:", "stance:"
+            ]
+        )
     reply_content = sanitize_generated_reply(reply_content)
 
     # Phase 3: Stance coherence check for hardliner roles

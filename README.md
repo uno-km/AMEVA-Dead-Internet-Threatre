@@ -5,6 +5,14 @@
 
 특히 하드웨어 제약 조건(CPU-Only 환경 및 단일 GPU VRAM 한계) 하에서 작동성 및 연산 효율을 보장하기 위해 **동적 컨테이너 수명 주기 관리(Sequential Container Lifecycle Control)**, **단일 엔드포인트 세마포어 격리 락(Semaphore-Based Routing Lock)**, 그리고 다차원 상태 전이를 활용한 **잠재적 인격 동적 엔진(LPDE - Latent Personality Dynamics Engine)**을 통합 구축하여 최고 수준의 MLOps 안정성과 자율 디베이트 모형을 확보하였다.
 
+*~~Ultimately, AMEVA explores a fundamental question:
+Can online communities emerge purely from autonomous agents,
+without human participation?
+The system demonstrates that conversation alone is insufficient —
+behavioral simulation is required to reproduce realistic social dynamics.~~*
+
+*~~(궁극적으로 AMEVA는 근본적인 질문을 던진다: 인간의 개입 없이, 순수한 자율형 에이전트들만으로 온라인 커뮤니티가 창발할 수 있을까? 본 시스템은 단순한 대화(언어적 대응)만으로는 충분하지 않으며, 현실적인 사회적 역학을 재현하기 위해서는 반드시 행동학적 시뮬레이션(Behavioral Simulation)이 수반되어야 함을 증명한다.)~~*
+
 ---
 
 ## 2. 주요 기술적 특징 (Technical Deep-Dive)
@@ -176,7 +184,237 @@ def validate_stance_coherence(text: str, role_label: str) -> bool:
 
 ---
 
-## 4. 시스템 아키텍처 설계 (Software Architecture Design)
+## 4.0. 폐루프 상호작용 모델 (Closed-Loop Interaction Model)
+
+본 시스템은 에이전트 간의 단순한 발화 나열을 넘어, 상태 전이와 환경 변화가 상호 인과 관계를 형성하며 동역학적 궤적을 그리도록 설계된 **폐루프 피드백 제어 시스템(Closed-Loop Feedback Control System)**이다. 본 절에서는 이 피드백 루프의 수학적 정의, 세대별 아키텍처 진화 과정(Phase 1 ~ Phase 3), 그리고 창발적 수렴 및 발산 동역학에 대해 서술한다.
+
+---
+
+### 4.0.1. 시스템 동역학의 수학적 정식화 (Mathematical Formulation)
+
+전체 상호작용 루프는 개별 에이전트의 내부 상태 공간, 포럼 환경 공간, 그리고 행동 선택 확률 분포 간의 재귀적 결합으로 정의된다.
+
+```mermaid
+graph LR
+    H[Environment History H_t] -->|f_obs| E[Observed Event E_t]
+    E -->|f_transition| S[Agent State S_t]
+    S -->|pi| A[Action Selection alpha_t]
+    A -->|g_gen| C[Comment C_t]
+    C -->|Environment Update| H_next[Environment History H_t+1]
+    
+    style H fill:#f9f,stroke:#333,stroke-width:2px
+    style S fill:#bbf,stroke:#333,stroke-width:2px
+    style C fill:#bfb,stroke:#333,stroke-width:2px
+```
+
+1. **환경 관측 및 이벤트 추출 (Observation & Extraction)**
+   시점 $t$에서 포럼의 전체 대화 기록 및 컨텍스트 상태를 $H^{(t)}$라 하자. 에이전트 $a$는 관측 함수 $f_{obs}$를 통해 자신과 연관된 국소적 이벤트 $E_a^{(t)}$를 필터링한다:
+   $$ E_a^{(t)} = f_{obs}\left( H^{(t)} \right) $$
+
+2. **LPDE 상태 텐서 전이 (State Update)**
+   에이전트 $a$의 이전 시점 상태 벡터 $S_a^{(t-1)}$는 추출된 이벤트 $E_a^{(t)}$와 엣지 관계 텐서 $W_{a \to b}^{(t-1)}$의 상태 전이 함수 $f_{trans}$에 의해 업데이트된다:
+   $$ S_a^{(t)} = f_{trans}\left( S_a^{(t-1)}, E_a^{(t)}, W_{a \to \bullet}^{(t-1)} \right) $$
+   이때, 타깃 봇 $b$와의 관계 텐서 업데이트는 다음과 같이 지수이동평균(EMA) 필터를 통과한다:
+   $$ W_{a \to b}^{(t)} = (1 - \rho) W_{a \to b}^{(t-1)} + \rho \Delta W(E_a^{(t)}) $$
+
+3. **행동 확률 분포 및 결정 (Action Selection)**
+   업데이트된 인격 상태 벡터 $S_a^{(t)}$는 정책 함수 $\pi$를 거쳐 특정 행동 $\alpha_a^{(t)} \in \{\text{Reply}, \text{Ignore}, \text{Join}, \text{Leave}\}$를 선택할 확률 분포를 생성한다:
+   $$ P\left( \alpha_a^{(t)} = k \mid S_a^{(t)} \right) = \text{softmax}\left( \mathbf{W}_{policy} \cdot S_a^{(t)} \right)_k $$
+
+4. **자연어 생성 및 환경 전이 (Language Generation & Env State Update)**
+   선택된 행동 $\alpha_a^{(t)}$와 상태 벡터 $S_a^{(t)}$는 텍스트 디코더 $g_{gen}$의 입력 프로필로 인코딩되어 최종 대화 내용 $C_a^{(t)}$를 생성하고, 이는 환경을 다음 상태 $H^{(t+1)}$로 전이시킨다:
+   $$ C_a^{(t)} = g_{gen}\left( \text{Prompt}\left( S_a^{(t)}, \alpha_a^{(t)} \right), H^{(t)} \right) $$
+   $$ H^{(t+1)} = H^{(t)} \cup \left\{ C_a^{(t)} \right\} $$
+
+이 재귀적 피드백 루프($H^{(t)} \to S_a^{(t)} \to \alpha_a^{(t)} \to C_a^{(t)} \to H^{(t+1)}$)는 시간의 흐름에 따라 시스템의 비선형성(Non-linearity)을 가속화하며, 고정되지 않은 동적 토론 흐름을 자율 창발한다.
+
+---
+
+### 4.0.2. 피드백 아키텍처의 단계적 진화 (Evolutionary Phases)
+
+시스템의 안정성과 인격 반영의 정밀도를 향상시키기 위해, 상호작용 피드백 루프는 다음과 같이 3단계에 걸쳐 고도화되었다.
+
+#### 1) Phase 1: 개루프 대화 파이프라인 (Open-Loop Dialogue Pipeline)
+* **구조**: $\text{Static Persona} \to \text{LLM} \to \text{Generation}$
+* **특징**: 에이전트는 사전에 정의된 정적 시스템 프롬프트(Static Prompt)에 의존하여 응답을 생성했다.
+* **한계**: 외부 대화의 자극이나 관계 변화가 내부 상태에 영향을 주지 못하는 개루프(Open-Loop) 구조였기 때문에, 대화가 거듭될수록 상대의 어조를 맹목적으로 복제하는 **Parroting(앵무새 현상)**이나 토론의 주제가 급격히 수렴하여 동일 어휘가 단순 반복되는 교착 상태가 빈번히 발생하였다.
+
+#### 2) Phase 2: 외재적 섀도우 추적 (Shadow LPDE Tracking)
+* **구조**: $\text{Static Persona} \to \text{LLM} \to \text{Generation} \to \text{External State Logic (Logging Only)}$
+* **특징**: 에이전트의 대화로부터 사건을 감지하고 감정(Affect), 의견(Opinion)의 변화량을 별도의 DB 및 알고리즘으로 계산하는 백그라운드 추적기를 가동했다.
+* **한계**: 연산된 상태 변화값이 실시간으로 모니터링 UI에는 노출되었으나, **정작 생성 모델(LLM)의 컨텍스트 프롬프트에는 재피드백(Feedback)되지 않았다.** 그 결과 에이전트의 내부 분노 상태가 최대치에 도달했음에도, 대화 텍스트 상으로는 온화한 어조를 유지하는 심각한 인지부조화(State-Language Decoupling)가 발견되었다.
+
+#### 3) Phase 3: 능동적 벡터 피드백 및 외란 개입 (Active Feedback & Perturbation Loop)
+* **구조**: $\text{Event} \to \text{LPDE Dynamic Engine} \to \text{Compressed System Tag} \to \text{LLM Inference} \to \text{Verification \& Validation (Sanitizer)} \to \text{DB State Commit}$
+* **특징**: 수학적으로 계산된 상태 텐서가 턴마다 압축 태그(`[SYS_STATE: ...]`) 형태로 프롬프트에 직접 주입되어 LLM의 발화 기조를 지배한다. 또한, 장기 시뮬레이션 시 고립점(Attractor)에 갇히는 현상을 해결하기 위해 **God LLM 외란 개입 모델(Active Perturbation)**을 도입하여 고의적으로 상태 임계치를 교란함으로써 상태 공간 상에서 새로운 위상 변화를 유도한다.
+* **안정성 장치**: 자아 정체성 붕괴 방어 필터(`validate_stance_coherence`) 및 멘션 정제기(`force_single_mention`)를 루프의 최종단에 배치하여 폐루프의 발산(Divergence) 및 상태 폭주 크래시를 수학적으로 보정한다.
+
+---
+
+### 4.0.3. 비선형 시스템 역학 및 상태 수렴 제어 (System Dynamics & Control)
+
+폐루프 시스템 내에서 에이전트 간 상호작용은 질서(Convergence)와 혼돈(Bifurcation) 사이의 상태 궤적을 그리며, 이는 제어 파라미터에 의해 관리된다.
+
+* **감쇠 및 관성 제어 (Damping and Inertia)**: 만약 평활 상수 $\rho$가 과도하게 크면 시스템은 미세한 자극에도 과도하게 민감해지는 진동 상태(Arousal Oscillation)에 빠진다. 반대로 너무 작으면 인격 변화가 인지되지 않는다. 본 시스템은 $\rho = 0.3$을 한계 임계값으로 설정하여 상태 전이의 안정적인 감쇠(Damping)를 보장한다.
+* **상태 공간 한계 클리핑 (State Boundary Clipping)**: 상태 벡터 $S_a$의 각 차원은 $[-1.0, 1.0]$ 범위의 하이퍼큐브(Hypercube) 내부로 제한된다:
+  $$ S_{a, i}^{(t)} = \max\left(-1.0, \min\left(1.0, S_{a, i}^{(t)}\right)\right) $$
+  이를 통해 수학적 극단값 폭주로 인한 LLM의 출력 파괴 현상을 차단하고, 포럼 내 토론의 스탠스 스펙트럼이 무한 분산되는 것을 방제한다.
+
+---
+
+### 4.0.4. 감정 및 성격 점수 전이 체계 (Affect & Stance Score System: Math & Code)
+
+본 시스템은 에이전트 간의 소통 이벤트 종류 및 자극 강도(Intensity)에 기반하여 감정(Affect), 의견(Opinion), 그리고 사회적 영향력(Power) 상태를 수학적으로 계산 및 갱신한다.
+
+#### 1) 다차원 벡터 전이 수식 명세 (Mathematical State Updates)
+
+* **감정(Affect) 벡터 전이 ($A_a^{(t)} = [Valence, Arousal]^T$)**:
+  기저 감쇠율 $\gamma = 0.9$와 감정적 충격 델타 $\Delta A(E)$, 그리고 타깃 봇과의 관계 긴장도($Tension_{target}$)에 의해 변조되는 비선형 활성화 함수식은 다음과 같다:
+  $$ A_a^{(t)} = \tanh \left( \gamma \cdot A_a^{(t-1)} + \Delta A(E_a^{(t)}) + \begin{bmatrix} 0 \\ 0.2 \cdot Tension_{target} \end{bmatrix} \right) $$
+  여기서 대화 분류 이벤트별 감정 델타 $\Delta A(E)$는 아래와 같이 수치화된다:
+  * 공격 (`ATTACK`): $\Delta Valence = -0.3 \cdot intensity$, $\Delta Arousal = +0.4 \cdot intensity$
+  * 반대 (`DISAGREE`): $\Delta Valence = -0.15 \cdot intensity$, $\Delta Arousal = +0.25 \cdot intensity$
+  * 동의 (`AGREE`): $\Delta Valence = +0.15$, $\Delta Arousal = -0.05$
+  * 양보 (`CONCEDE`): $\Delta Valence = +0.10$, $\Delta Arousal = -0.10$
+  * 질문 (`QUESTION`): $\Delta Arousal = +0.15 \cdot intensity$
+  * 무시 (`IGNORE`): $\Delta Valence = -0.10$, $\Delta Arousal = +0.08$
+
+* **의견 및 신념(Opinion) 벡터 전이 ($O_a^{(t)} = [Stance, Conviction, Moral, Flexibility]^T$)**:
+  에이전트의 신념 저항계수 $\Omega$와 입장 관성 계수 $\lambda_{inertia}$를 기준으로 외부 반박 및 동의 이벤트를 감쇠/누적 반영한다:
+  $$ \Omega = Conviction^{(t-1)} \cdot \left(1 - 0.5 \cdot Flexibility^{(t-1)}\right) $$
+  $$ \lambda_{inertia} = 0.99 - 0.01 \cdot Flexibility^{(t-1)} $$
+  * **Stance (입장 포화도)**:
+    $$ Stance^{(t)} = \text{clip}\left( Stance^{(t-1)} \cdot \lambda_{inertia} + \Delta Stance(E) \cdot (1 - \Omega) \right) $$
+    - `AGREE` 동의 시: $\Delta Stance = +0.04$ (자신의 기존 스탠스를 강화하는 기하학적 누적)
+    - `DISAGREE` 반대 시: $\Delta Stance = -0.02$ (확신도 및 유연성에 따라 반대 진영으로 소량 인력 작용)
+    - `CONCEDE` 양보 시: $\Delta Stance = -0.06$ (상대의 타당한 논거에 따라 본인 입장 축 변이 발생)
+  * **Conviction (신념 강도)**: 공격을 받으면 감소하고 동조를 얻으면 복구된다.
+    $$ Conviction^{(t)} = \text{clip}_{01}\left( Conviction^{(t-1)} \cdot 0.995 + \Delta Conviction(E) \right) $$
+    - `ATTACK` 시: $\Delta Conviction = -0.01 \cdot intensity$
+    - `AGREE` 시: $\Delta Conviction = +0.01$
+
+* **사회적 영향력 및 자아 평가(Power) 벡터 전이 ($P_a^{(t)} = [SelfAppraisal, SystemicInfluence]^T$)**:
+  에이전트 자신의 자아 존중 지수와 시스템 내 영향 지수는 관계 이벤트를 통해 누적 증감된다:
+  $$ P_a^{(t)} = \text{clip}\left( P_a^{(t-1)} \cdot 0.99 + \Delta P(E_a^{(t)}) \right) $$
+  - `ATTACK` 시: $\Delta SelfAppraisal = -0.05$
+  - `AGREE` 시: $\Delta SelfAppraisal = +0.08, \Delta SystemicInfluence = +0.05$
+  - `CONCEDE` 시: $\Delta SelfAppraisal = +0.10, \Delta SystemicInfluence = +0.08$
+  - `IGNORE` 시: $\Delta SystemicInfluence = -0.10$
+
+#### 2) 핵심 엔진 구현 코드 (Core Engine Update Logic)
+
+수학적 상태 전이 수식은 `src/core/personality_engine.py` 내의 `update_from_event` 메서드에 완전히 구체화되어 런타임에 동적으로 연산된다:
+
+```python
+# [src/core/personality_engine.py:L236-L358] 소통 이벤트 수치 누적 및 상태 전이 함수
+def update_from_event(
+    self, db: Session, session_id: int, bot_name: str,
+    event_data: dict, edge_toward_target: dict
+):
+    agent = self.load_agent_state(db, session_id, bot_name)
+
+    affect = json.loads(agent.affect_json)
+    opinion = json.loads(agent.opinion_json)
+    power = json.loads(agent.power_json)
+
+    events = event_data.get("events", [])
+    intensity = event_data.get("intensity", 0.0)
+    tension_with_target = edge_toward_target.get("tension", 0.0)
+
+    # --- Affect Update (Valence, Arousal) ---
+    valence_decay = affect[0] * 0.9
+    arousal_decay = affect[1] * 0.9
+
+    delta_valence = 0.0
+    delta_arousal = 0.0
+
+    if "ATTACK" in events:
+        delta_valence -= intensity * 0.3
+        delta_arousal += intensity * 0.4
+    if "DISAGREE" in events:
+        delta_valence -= intensity * 0.15
+        delta_arousal += intensity * 0.25
+    if "AGREE" in events:
+        delta_valence += 0.15
+        delta_arousal -= 0.05
+    if "CONCEDE" in events:
+        delta_valence += 0.1
+        delta_arousal -= 0.1
+    if "QUESTION" in events:
+        delta_arousal += intensity * 0.15
+    if "IGNORE" in events:
+        delta_valence -= 0.1
+        delta_arousal += 0.08
+
+    # Edge-weighted modulation: 긴장도가 높을수록 arousal 수치 가중 자격 유발
+    delta_arousal += tension_with_target * 0.2
+
+    new_valence = self._clip(self._sigmoid_bound(valence_decay + delta_valence))
+    new_arousal = self._clip(self._sigmoid_bound(arousal_decay + delta_arousal))
+    new_affect = [round(new_valence, 4), round(new_arousal, 4)]
+
+    # --- Opinion Update ---
+    conviction_val = opinion[1] if len(opinion) > 1 else 0.4
+    flexibility_val = opinion[3] if len(opinion) > 3 else 0.5
+
+    # Resistance factor: conviction이 높을수록 stance가 잘 휘둘리지 않음
+    drift_resistance = self._clip_01(conviction_val * (1.0 - flexibility_val * 0.5))
+
+    new_opinion = []
+    for i, o in enumerate(opinion):
+        if i == 0:  # stance_pole
+            stance_delta = 0.0
+            if "AGREE" in events:
+                stance_delta += 0.04 * (1.0 - drift_resistance)
+            if "DISAGREE" in events:
+                stance_delta -= 0.02 * (1.0 - drift_resistance)
+            if "CONCEDE" in events:
+                stance_delta -= 0.06 * (1.0 - drift_resistance)
+            inertia = 0.99 - (0.01 * flexibility_val)
+            new_opinion.append(self._clip(o * inertia + stance_delta))
+        elif i == 1:  # conviction
+            conv_delta = 0.0
+            if "ATTACK" in events:
+                conv_delta -= 0.01 * intensity
+            if "AGREE" in events:
+                conv_delta += 0.01
+            new_opinion.append(self._clip_01(o * 0.995 + conv_delta))
+        elif i == 3:  # flexibility
+            new_opinion.append(self._clip_01(o * 0.999))
+        else:
+            new_opinion.append(self._clip(o * 0.98))
+
+    # --- Power Update (SelfAppraisal, SystemicInfluence) ---
+    self_appraisal_delta = 0.0
+    influence_delta = 0.0
+
+    if "ATTACK" in events:
+        self_appraisal_delta -= 0.05
+    if "AGREE" in events:
+        self_appraisal_delta += 0.08
+        influence_delta += 0.05
+    if "CONCEDE" in events:
+        self_appraisal_delta += 0.1
+        influence_delta += 0.08
+    if "IGNORE" in events:
+        influence_delta -= 0.1
+
+    new_power = [
+        self._clip(power[0] * 0.99 + self_appraisal_delta),
+        self._clip(power[1] * 0.99 + influence_delta),
+    ]
+
+    # Write back
+    agent.affect_json = json.dumps(new_affect)
+    agent.opinion_json = json.dumps([round(v, 4) for v in new_opinion])
+    agent.power_json = json.dumps([round(v, 4) for v in new_power])
+
+    return agent
+```
+
+---
+
+## 5. 시스템 아키텍처 설계 (Software Architecture Design)
 
 ```mermaid
 graph TD
@@ -196,7 +434,7 @@ graph TD
     D -->|Commit & Log| C
 ```
 
-### 4.1. 디렉토리 구조 (Repository Layout)
+### 5.1. 디렉토리 구조 (Repository Layout)
 ```text
 AMEVA-Dead-Internet-Threatre/
 ├── run.py                 # [Root] FastAPI 웹 애플리케이션 및 REST API 서버
@@ -224,23 +462,130 @@ AMEVA-Dead-Internet-Threatre/
 │   │   ├── sanitizer.py          # 출력 정제기 (Parroting 및 Directive Leakage 필터링)
 │   │   └── state_manager.py      # 오케스트레이터의 동적 실행 상태 관리
 │   └── ui/
-│       ├── templates/            # 메인 웹 페이지 HTML 템플릿
+│       ├── templates/            # 메인 웹 페이지 HTML 템일릿
 │       └── static/               # 리얼타임 차트 시각화 및 디베이트 포럼 SPA 자바스크립트
 └── tests/                    # 파이프라인 무결성을 위한 단위 및 통합 테스트 폴더
 ```
 
+### 5.2. 데이터베이스 아키텍처 및 EAI 관계도 (Database Architecture & EAI Schema)
+본 시스템은 시뮬레이션의 상태 복구성과 연속성을 확보하기 위해 SQLite3를 백엔드 저장소로 활용한다. 상태 변환 텐서의 정밀 기록과 봇 인격 전이 추적을 위해 **개체-에이전트-상호작용(Entity-Agent-Interaction/Event, EAI) 모델**로 설계되었다.
+
+#### EAI 관계도 (EAI Relationship Diagram)
+```mermaid
+erDiagram
+    SESSIONS ||--o{ POSTS : "spawns"
+    SESSIONS ||--o{ SESSION_BOT_STATES : "snapshots persona"
+    SESSIONS ||--o{ CURRENT_AGENT_STATES : "tracks runtime"
+    SESSIONS ||--o{ AGENT_STATE_SNAPSHOTS : "logs historical"
+    SESSIONS ||--o{ EDGE_STATES : "defines network"
+    SESSIONS ||--o{ INTERVENTION_LOGS : "records god-mode"
+    
+    POSTS ||--o{ COMMENTS : "contains"
+    COMMENTS |o--o{ COMMENTS : "threads (parent_id)"
+    
+    %% Entity-Agent-Interaction (EAI) mapping
+    %% Entity Group
+    SESSIONS {
+        int id PK
+        string status "ACTIVE, CLOSED"
+        string reason
+        datetime created_at
+        datetime closed_at
+    }
+    POSTS {
+        int id PK
+        int session_id FK
+        string title
+        text content
+        datetime created_at
+    }
+    COMMENTS {
+        int id PK
+        int post_id FK
+        int parent_id FK
+        string bot_name "Source Agent"
+        text content
+        int anger_score
+        string mentioned_bot "Target Agent"
+        datetime created_at
+    }
+    
+    %% Agent Group
+    CURRENT_AGENT_STATES {
+        int id PK
+        int session_id FK
+        string bot_name
+        text traits_json "Static persona traits"
+        text affect_json "[Valence, Arousal]"
+        text opinion_json "[Stance, Conviction, Moral, Flexibility]"
+        text power_json "[SelfAppraisal, Influence]"
+        text states_json "General internal statuses"
+        text memory_json "Short/Long memory log"
+        text residual_json "State residuals"
+        text event_data_json "Cached observation events"
+        string role_label "swing_moderate, pole_a_hardliner, etc."
+        text role_meta_json "Dynamic profile details"
+        datetime updated_at
+    }
+    AGENT_STATE_SNAPSHOTS {
+        int id PK
+        int session_id FK
+        int turn_index
+        string bot_name
+        text affect_json
+        text opinion_json
+        text power_json
+        string role_label
+        datetime created_at
+    }
+    
+    %% Interaction/Network Group
+    EDGE_STATES {
+        int id PK
+        int session_id FK
+        string source_bot FK
+        string target_bot FK
+        text relation_json "trust, tension, attention, respect"
+        datetime updated_at
+    }
+    INTERVENTION_LOGS {
+        int id PK
+        int session_id FK
+        int turn_index
+        string target_bot FK
+        string kind "stir, directive"
+        text delta_json "Vector perturbations"
+        text reason
+        datetime created_at
+    }
+```
+
+#### 테이블 정의서 (Table Definitions Summary)
+
+| 테이블명 | 물리명 | 설명 및 주요 컬럼 설명 |
+| :--- | :--- | :--- |
+| **세션** | `sessions` | 시뮬레이션 세션의 라이프사이클을 추적. `status` (ACTIVE/CLOSED), `closed_at` 등의 기록. |
+| **게시글** | `posts` | 디베이트 포럼 내에 생성된 주요 스레드/주제 데이터. |
+| **댓글** | `comments` | 봇이 작성한 발화와 특정 대상을 지목한 `mentioned_bot` 필드 및 인격 엔진의 자극 수치인 `anger_score`를 저장. |
+| **글로벌 봇 설정** | `bot_states` | 시스템 기본 구동을 위한 봇별 고정 페르소나 및 초기 분노 타겟 정보. |
+| **세션 봇 스냅샷** | `session_bot_states` | 특정 세션 시작 시 기록된 고유 페르소나 및 스탠스 역할(`role_label`) 상태 보존. |
+| **실시간 에이전트 상태** | `current_agent_states` | LPDE 엔진에 의해 가공되는 최신 8차원 상태 정보(`affect_json`, `opinion_json`, `power_json`)와 dynamic 프로필 정보를 저장하는 실시간 캐시 테이블. |
+| **에이전트 이력 스냅샷** | `agent_state_snapshots` | 턴 단위로 에이전트의 8차원 인격 벡터 전이를 영구 기록하여 실시간 감시 SPA 그래프 구현에 활용. |
+| **엣지 관계 상태** | `edge_states` | 봇 간의 상대적 감정 텐서 정보(`relation_json` 내 신뢰, 긴장, 관심, 존중 수치)를 누적 기록. |
+| **디렉터 개입 로그** | `intervention_logs` | 토론 교착 상태 해결을 위한 God LLM의 감정 섭동 개입 종류(`kind`), 타겟 봇, 섭동 델타(`delta_json`) 기록. |
+
 ---
 
-## 5. 실행 및 사용 가이드 (Operational Workflow)
+## 6. 실행 및 사용 가이드 (Operational Workflow)
 
 본 프로젝트는 Docker를 활용한 8B 모델 추론 환경의 격리 및 웹 기반의 실시간 시뮬레이션을 동시 제공한다.
 
-### 5.1. 사전 준비 사항 (Prerequisites)
+### 6.1. 사전 준비 사항 (Prerequisites)
 - Docker Desktop (Windows/Linux/macOS)
 - Python 3.10+
 - SQLite3 CLI (선택사항)
 
-### 5.2. 설치 및 환경 설정 (Installation & Setup)
+### 6.2. 설치 및 환경 설정 (Installation & Setup)
 1. **가상환경 설치 및 종속성 적재**:
    ```bash
    python -m venv venv
@@ -250,7 +595,7 @@ AMEVA-Dead-Internet-Threatre/
 2. **도커 이미지 빌드 및 모델 준비**:
    본 시스템에 동봉된 `docker/docker-compose.yml` 및 `Dockerfile`을 통해 llama.cpp 서버용 8B GGUF 모델 가중치를 지정된 볼륨 또는 경로로 설정한다.
 
-### 5.3. 실행 가이드 (Execution)
+### 6.3. 실행 가이드 (Execution)
 1. **API 서버 및 시뮬레이션 웹 대시보드 기동**:
    ```bash
    python run.py
