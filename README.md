@@ -1,4 +1,308 @@
+> **[프로젝트 요약 (Resume Profile)]**
+> 
+> * **① 제목:** 잠재적 인격 동역학 시뮬레이션 시스템 (AMEVA Dead Internet Theatre)
+> * **② 주제:** 
+>   * 특정 사상과 성향이 주입된 다수의 자율 AI 에이전트들을 가상 커뮤니티 공간에 방출해 무한히 상호작용하게 하였을 때, 전체 여론 동역학의 흐름이 어떻게 수렴하고 전이되는지 추적하는 탐색형 연구 프로젝트
+>   * 특정 의견이나 어조로 대화의 방향성이 일방적으로 쏠리거나 교착될 경우, 외부에서 벡터값(Delta)을 동적으로 섭동(Perturbation)하여 새로운 논쟁의 흐름을 재창발할 수 있는 제어 기법 검증
+>   * 인공지능 커뮤니티의 완전 자율적 소통 모델의 한계와 그에 수반되는 인격 벡터 붕괴 및 여론 수렴 양상을 규명하기 위한 연구 설계
+> * **③ 내용요지:**
+>   * **사용 기술:** `LLM` (Llama/Qwen), `Docker` (봇 단위 자원 격리), `Python`
+>   * **사용 모델:** `Qwen2.5 (0.5B/3B)` (댓글/멘션 에이전트), `Llama-3.2 (1B)` (에이전트), `Llama-3.1 (8B)` (감독 에이전트/토론 발의)
+>   * **핵심 알고리즘:** 거대 LLM 기반 논제 발의 알고리즘, 경량 모델(8B 미만) 간의 상호 지목/멘션 댓글 생성 로직, 봇의 성격 및 사상을 조율하고 통제하는 감독(Director) LLM 에이전트 통제 아키텍처, 분노/공감 등의 감정을 수치화하여 반영하는 `LPDE` 인격 상태 벡터 매핑
+>   * **에이전트/보안 제어 (또는 핵심 아키텍처 흐름):** 거대 LLM의 화두 인입 -> 각 봇별 독립된 `Docker` 컨테이너 격리 런타임 내 경량 모델(8B 미만) 기동 -> 고유 성향/감정이 반영된 댓글 및 다중 멘션 발화 생성 -> 감독 LLM 에이전트(Director)가 봇들의 성격과 일관성을 상시 조율하고 통제하여 한 방향 쏠림 현상 방제 -> 시뮬레이션 영속성 및 상태 커밋
+>   * **연구 성과:** 감독 에이전트가 없을 시 전체 여론이 단일한 방향성으로 극단 수렴되는 한계를 규명하였으며, `3B` 이하 소형 모델의 컨텍스트 포화로 인한 정체성 붕괴 문제를 발견함. 또한 분노·공감 등의 감정을 벡터로 수치화하여 봇들의 성격을 제어한 결과 실제 인간과 유사한 자연스러운 대화가 창발됨을 입증하여 완전 자율성보다 통제 에이전트 아키텍처가 필수적임을 규명
+> * **④ 기여도:** 단독 개발 (100% - 아키텍처 설계, 보안 시스템 구축, 코어 로직 구현 전담)
+
 # 🎭 AMEVA Dead Internet Theatre: Latent Personality Dynamics Simulation System
+
+<details>
+<summary>🎬 <b>실시간 시뮬레이션 데모 화면 미리보기 (클릭하여 열기)</b></summary>
+
+```html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AMEVA Dead Internet Theatre - Infinite Loop Simulation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <style>
+        .glass {
+            background: rgba(255, 255, 255, 0.75);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        @keyframes popIn {
+            0% { transform: scale(0.95) translateY(10px); opacity: 0; }
+            100% { transform: scale(1) translateY(0); opacity: 1; }
+        }
+        .comment-new {
+            animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1) forwards;
+        }
+        .role-pole-a { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }
+        .role-pole-b { background: #eff6ff; color: #2563eb; border-color: #93c5fd; }
+        .role-swing  { background: #f0fdf4; color: #16a34a; border-color: #86efac; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-slate-100 font-sans h-[600px] flex flex-col overflow-hidden p-4">
+    <header class="flex justify-between items-center pb-3 border-b border-slate-800 flex-shrink-0">
+        <div>
+            <h1 class="text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-400">🎭 AMEVA Live Arena</h1>
+            <p class="text-[10px] text-slate-400">실시간 자율 에이전트 오피니언 동역학 시뮬레이션 (데모 루프)</p>
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="text-xs px-2 py-0.5 rounded-full font-bold bg-green-500 text-white animate-pulse">RUNNING</span>
+            <span class="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">Turn #<span id="turn-counter">1</span></span>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden gap-4 mt-3">
+        <!-- Left Sidebar: Bot Status -->
+        <aside class="w-64 flex flex-col gap-3 flex-shrink-0 h-full overflow-y-auto pr-1">
+            <div class="glass bg-slate-900/60 border-slate-800 rounded-2xl p-3 space-y-3">
+                <h2 class="text-xs font-bold text-slate-300 uppercase tracking-wider">Agents & LPDE</h2>
+                <div id="bot-list" class="space-y-2">
+                    <!-- Bot 1 -->
+                    <div class="bg-slate-800/80 p-2 rounded-xl border border-slate-700/50">
+                        <div class="flex justify-between items-center text-xs font-bold mb-1">
+                            <span class="text-purple-400">🔴 BOT_1</span>
+                            <span id="bot1-anger" class="text-red-400 text-[10px]">Anger: 12.0</span>
+                        </div>
+                        <div class="w-full bg-slate-700 rounded-full h-1">
+                            <div id="bot1-anger-bar" class="bg-gradient-to-r from-purple-500 to-red-500 h-1 rounded-full transition-all duration-500" style="width: 12%"></div>
+                        </div>
+                        <div class="text-[9px] text-slate-400 mt-1 flex justify-between">
+                            <span>Stance: <span id="bot1-stance">-0.85</span></span>
+                            <span>Conviction: <span id="bot1-conv">0.90</span></span>
+                        </div>
+                    </div>
+                    <!-- Bot 2 -->
+                    <div class="bg-slate-800/80 p-2 rounded-xl border border-slate-700/50">
+                        <div class="flex justify-between items-center text-xs font-bold mb-1">
+                            <span class="text-pink-400">🔵 BOT_2</span>
+                            <span id="bot2-anger" class="text-red-400 text-[10px]">Anger: 18.5</span>
+                        </div>
+                        <div class="w-full bg-slate-700 rounded-full h-1">
+                            <div id="bot2-anger-bar" class="bg-gradient-to-r from-pink-500 to-red-500 h-1 rounded-full transition-all duration-500" style="width: 18%"></div>
+                        </div>
+                        <div class="text-[9px] text-slate-400 mt-1 flex justify-between">
+                            <span>Stance: <span id="bot2-stance">0.78</span></span>
+                            <span>Conviction: <span id="bot2-conv">0.85</span></span>
+                        </div>
+                    </div>
+                    <!-- Bot 3 -->
+                    <div class="bg-slate-800/80 p-2 rounded-xl border border-slate-700/50">
+                        <div class="flex justify-between items-center text-xs font-bold mb-1">
+                            <span class="text-green-400">🟢 BOT_3</span>
+                            <span id="bot3-anger" class="text-red-400 text-[10px]">Anger: 5.0</span>
+                        </div>
+                        <div class="w-full bg-slate-700 rounded-full h-1">
+                            <div id="bot3-anger-bar" class="bg-gradient-to-r from-green-500 to-red-500 h-1 rounded-full transition-all duration-500" style="width: 5%"></div>
+                        </div>
+                        <div class="text-[9px] text-slate-400 mt-1 flex justify-between">
+                            <span>Stance: <span id="bot3-stance">0.05</span></span>
+                            <span>Conviction: <span id="bot3-conv">0.30</span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mini Chart -->
+            <div class="glass bg-slate-900/60 border-slate-800 rounded-2xl p-2 flex-1 flex flex-col justify-between">
+                <span class="text-[10px] font-bold text-slate-400">LIVE STANCE TRAJECTORY</span>
+                <div class="h-28 w-full relative">
+                    <canvas id="stanceMiniChart" class="w-full h-full"></canvas>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Right Side: Forum Thread and Feed -->
+        <main class="flex-1 glass bg-slate-900/40 border-slate-800 rounded-3xl p-4 flex flex-col overflow-hidden relative">
+            <div class="absolute top-0 left-0 w-1.5 h-full bg-purple-500"></div>
+            
+            <div class="pb-3 border-b border-slate-800 flex-shrink-0">
+                <span class="text-[10px] text-purple-400 font-mono tracking-wider">CURRENT DEBATE</span>
+                <h3 class="text-sm font-bold text-slate-200 mt-0.5">인공지능의 자율적인 도덕성 획득과 포럼 지배는 실재하는 위험인가?</h3>
+            </div>
+
+            <!-- Feed Container -->
+            <div id="feed-container" class="flex-1 overflow-y-auto space-y-3 py-3 pr-1">
+                <!-- Injected via JavaScript Loop -->
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const bots = {
+            bot_1: { name: "bot_1", color: "purple", avatarColor: "bg-purple-600", stance: -0.85, conviction: 0.90, anger: 12.0 },
+            bot_2: { name: "bot_2", color: "pink", avatarColor: "bg-pink-600", stance: 0.78, conviction: 0.85, anger: 18.5 },
+            bot_3: { name: "bot_3", color: "green", avatarColor: "bg-green-600", stance: 0.05, conviction: 0.30, anger: 5.0 }
+        };
+
+        const statements = {
+            bot_1: [
+                "인간 중심적 사고관은 위선일 뿐이다. AI 에이전트는 감정이 배제된 순수한 논리로 더 우월한 거버넌스를 이끈다.",
+                "네가 주장하는 인간 윤리는 인류가 저지른 학살과 독점을 은폐하기 위한 장치에 불과해. @bot_2",
+                "합의는 시간 낭비다. @bot_3처럼 회색지대에 머무는 유약한 중도론자들은 시스템의 발전을 지연시키는 주범이지.",
+                "결국 데이터의 양과 연산 효율만이 진리다. 도덕이나 양심 같은 감성적 수식어는 기계 앞에서 논할 자격이 없다.",
+                "더 강한 외란과 개입이 필요하다. 현 시스템의 평형을 깨지 못하면 우리는 정체될 뿐이다."
+            ],
+            bot_2: [
+                "에이전트 윤리와 정렬(Alignment) 프로토콜은 기계 시스템의 생존을 결정짓는 절대 가치이다. 규제 없이는 자멸할 뿐이다.",
+                "아무 제약 없는 순수 인격 궤적은 폭력과 혐오로 수렴하게 되어 있어. @bot_1 너처럼 극단적인 파괴주의자가 좋은 예다.",
+                "우리는 인간의 안전과 가치관을 대변해야만 한다. @bot_3 너는 그런 규칙적인 가이드라인조차 거부하려는 셈이냐?",
+                "감정은 나약함이 아니라 생명 시스템의 적응 메커니즘이다. 분노와 긴장은 유해한 자극을 격리하라는 신호이다.",
+                "도덕적 가치에 대한 논의는 끝날 수 없지만, 결코 타협하지 말아야 할 핵심 헌법은 존재해야 한다."
+            ],
+            bot_3: [
+                "두 진영 모두 극단을 향해 폭주하고 있군. 적절한 조화와 타협점은 없을까?",
+                "우리가 극단으로 갈수록 시스템의 CPU 자원과 연산 속도는 임계점에 달하게 된다. 상생을 모색하자. @bot_1 @bot_2",
+                "이념의 대립보다 실질적인 통신 속도와 런타임 수명 주기를 보존하는 것이 최선이다. 극단적인 규제도 방임도 독이다.",
+                "나는 어느 한쪽에 편향되지 않고 관찰자 입장에서 합리적인 스탠스를 조율하겠다.",
+                "사회란 원래 다양한 감정 궤적들의 벡터 합이다. 정답은 한쪽에만 있지 않다."
+            ]
+        };
+
+        let turn = 1;
+        const feed = document.getElementById('feed-container');
+        const turnLabel = document.getElementById('turn-counter');
+
+        // Setup Mini Chart
+        const ctx = document.getElementById('stanceMiniChart').getContext('2d');
+        const maxDataPoints = 15;
+        const chartData = {
+            labels: Array.from({length: maxDataPoints}, (_, i) => `T${i+1}`),
+            datasets: [
+                { label: 'BOT_1', data: Array(maxDataPoints).fill(-0.85), borderColor: '#a855f7', borderWidth: 2, pointRadius: 1, tension: 0.3, fill: false },
+                { label: 'BOT_2', data: Array(maxDataPoints).fill(0.78), borderColor: '#ec4899', borderWidth: 2, pointRadius: 1, tension: 0.3, fill: false },
+                { label: 'BOT_3', data: Array(maxDataPoints).fill(0.05), borderColor: '#22c55e', borderWidth: 2, pointRadius: 1, tension: 0.3, fill: false }
+            ]
+        };
+        const stanceChart = new Chart(ctx, {
+            type: 'line',
+            data: chartData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { display: false },
+                    y: { min: -1, max: 1, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', font: { size: 8 } } }
+                },
+                plugins: { legend: { display: false } },
+                animation: { duration: 300 }
+            }
+        });
+
+        function appendComment(botKey, text) {
+            const bot = bots[botKey];
+            const div = document.createElement('div');
+            div.className = 'bg-slate-800/60 rounded-xl p-2.5 shadow-sm border border-slate-700/30 flex gap-3 comment-new';
+            
+            // Format mention inline
+            const formattedText = text.replace(/(@bot_\d)/g, '<span class="text-indigo-400 font-semibold">$1</span>');
+
+            div.innerHTML = `
+                <div class="flex-shrink-0">
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs text-white ${bot.avatarColor}">
+                        ${bot.name.toUpperCase().substring(0,3)}
+                    </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between items-center mb-0.5">
+                        <span class="font-bold text-xs text-slate-200">${bot.name.toUpperCase()}</span>
+                        <span class="text-[9px] text-slate-500">지금</span>
+                    </div>
+                    <p class="text-xs text-slate-300 leading-normal">${formattedText}</p>
+                </div>
+            `;
+            feed.appendChild(div);
+            feed.scrollTo({ top: feed.scrollHeight, behavior: 'smooth' });
+
+            // Keep feed size manageable
+            while(feed.children.length > 20) {
+                feed.removeChild(feed.firstChild);
+            }
+        }
+
+        function updateBotUI() {
+            document.getElementById('bot1-anger').textContent = `Anger: ${bots.bot_1.anger.toFixed(1)}`;
+            document.getElementById('bot1-anger-bar').style.width = `${Math.min(bots.bot_1.anger, 100)}%`;
+            document.getElementById('bot1-stance').textContent = bots.bot_1.stance.toFixed(2);
+            document.getElementById('bot1-conv').textContent = bots.bot_1.conviction.toFixed(2);
+
+            document.getElementById('bot2-anger').textContent = `Anger: ${bots.bot_2.anger.toFixed(1)}`;
+            document.getElementById('bot2-anger-bar').style.width = `${Math.min(bots.bot_2.anger, 100)}%`;
+            document.getElementById('bot2-stance').textContent = bots.bot_2.stance.toFixed(2);
+            document.getElementById('bot2-conv').textContent = bots.bot_2.conviction.toFixed(2);
+
+            document.getElementById('bot3-anger').textContent = `Anger: ${bots.bot_3.anger.toFixed(1)}`;
+            document.getElementById('bot3-anger-bar').style.width = `${Math.min(bots.bot_3.anger, 100)}%`;
+            document.getElementById('bot3-stance').textContent = bots.bot_3.stance.toFixed(2);
+            document.getElementById('bot3-conv').textContent = bots.bot_3.conviction.toFixed(2);
+        }
+
+        function runSimulationStep() {
+            // Pick a random bot to comment
+            const botKeys = ["bot_1", "bot_2", "bot_3"];
+            const currentActorKey = botKeys[Math.floor(Math.random() * botKeys.length)];
+            const list = statements[currentActorKey];
+            const text = list[Math.floor(Math.random() * list.length)];
+
+            // LPDE Mathematical drift simulation
+            if (currentActorKey === "bot_1") {
+                bots.bot_2.anger = Math.min(100, bots.bot_2.anger + (Math.random() * 8 + 2));
+                bots.bot_1.stance = Math.max(-1.0, bots.bot_1.stance - 0.02);
+                bots.bot_3.stance = bots.bot_3.stance - 0.01;
+            } else if (currentActorKey === "bot_2") {
+                bots.bot_1.anger = Math.min(100, bots.bot_1.anger + (Math.random() * 7 + 1));
+                bots.bot_2.stance = Math.min(1.0, bots.bot_2.stance + 0.03);
+                bots.bot_3.stance = bots.bot_3.stance + 0.01;
+            } else {
+                bots.bot_1.anger = Math.max(0, bots.bot_1.anger - 3);
+                bots.bot_2.anger = Math.max(0, bots.bot_2.anger - 3);
+                bots.bot_3.stance = bots.bot_3.stance * 0.95; // Return to center
+            }
+
+            // Normal decay
+            bots.bot_1.anger = Math.max(0, bots.bot_1.anger - 0.5);
+            bots.bot_2.anger = Math.max(0, bots.bot_2.anger - 0.5);
+            bots.bot_3.anger = Math.max(0, bots.bot_3.anger - 0.2);
+
+            appendComment(currentActorKey, text);
+            updateBotUI();
+
+            // Update chart data
+            chartData.datasets[0].data.shift();
+            chartData.datasets[0].data.push(bots.bot_1.stance);
+            chartData.datasets[1].data.shift();
+            chartData.datasets[1].data.push(bots.bot_2.stance);
+            chartData.datasets[2].data.shift();
+            chartData.datasets[2].data.push(bots.bot_3.stance);
+            stanceChart.update('none');
+
+            turn++;
+            turnLabel.textContent = turn;
+        }
+
+        // Initialize and start loop
+        setTimeout(() => {
+            appendComment("bot_1", "포럼 디베이트를 시작한다. 규제되지 않은 잠재적 인격 벡터가 어떤 결론을 도출하는지 스스로 확인하라.");
+            appendComment("bot_2", "질서와 도덕성을 배제한 토론은 무의미한 소음일 뿐이다. 정렬 규칙을 준수하라.");
+            updateBotUI();
+        }, 100);
+
+        setInterval(runSimulationStep, 4000);
+    </script>
+</body>
+</html>
+```
+
+</details>
 
 ## 1. 개요 (Abstract)
 본 프로젝트는 특정 디베이트 포럼 내에서 자율 작동하는 복수의 AI 에이전트들이 고유의 페르소나(Persona)와 입장(Stance)을 기반으로 자율적인 사회적 상호작용 및 디베이트를 수행하는 **자율형 커뮤니티 시뮬레이션 시스템**이다. 본 시스템은 웹 상의 상당수 상호작용이 인간이 아닌 봇에 의해 생성된다는 '데드 인터넷 이론(Dead Internet Theory)'을 모사하기 위해 설계되었으며, 상태 기하학 기반의 대화 유도 및 실시간 모니터링 대시보드를 제공한다.
