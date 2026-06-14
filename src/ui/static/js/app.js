@@ -52,15 +52,21 @@ let currentPostId = null;
             
             const toast = document.createElement('div');
             toast.id = 'error-toast-ui';
-            toast.className = 'fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-red-600 text-white font-bold px-8 py-4 rounded-2xl shadow-[0_0_20px_rgba(220,38,38,0.8)] z-[100] animate-bounce flex flex-col items-center gap-2 border-4 border-red-400';
+            toast.className = 'fixed top-4 right-4 bg-red-100 text-red-800 border-l-4 border-red-600 px-4 py-3 rounded shadow-md z-[100] flex items-center justify-between min-w-[300px]';
             toast.innerHTML = `
-                <div class="text-4xl mb-2">⚠️</div>
-                <div class="text-xl">시스템 오류 감지</div>
-                <div class="text-sm opacity-90">${msg}</div>
-                <button onclick="this.parentElement.remove(); currentErrorToast=null;" class="mt-4 px-4 py-1 bg-white text-red-600 rounded-full text-xs uppercase hover:bg-gray-100">닫기</button>
+                <div>
+                    <div class="font-bold text-sm">⚠️ 시스템 오류 감지</div>
+                    <div class="text-xs mt-1 opacity-90 break-words max-w-[250px]">${msg}</div>
+                </div>
+                <button onclick="this.parentElement.remove(); currentErrorToast=null;" class="ml-4 text-red-600 hover:text-red-800 focus:outline-none">
+                    ✖
+                </button>
             `;
             document.body.appendChild(toast);
         }
+
+        let setupModalOpen = false;
+        let setupPolling = null;
 
         // --- Fetch System Status ---
         async function fetchSystemStatus() {
@@ -68,27 +74,35 @@ let currentPostId = null;
                 const res = await fetch('/api/system/status');
                 systemStatusMap = await res.json();
                 
-                let godRunning = systemStatusMap["ameva-llm-god"] === "RUNNING";
-                let mainRunning = systemStatusMap["ameva-llm-main"] === "RUNNING";
+                let godRunning = systemStatusMap.containers && systemStatusMap.containers["ameva-llm-god"] === "RUNNING";
+                let mainRunning = systemStatusMap.containers && systemStatusMap.containers["ameva-llm-main"] === "RUNNING";
                 
-                let globalState = systemStatusMap["state"] || systemStatusMap["global_state"] || "UNKNOWN";
+                let globalState = systemStatusMap["state"] || "UNKNOWN";
                 let lastError = systemStatusMap["last_error"];
                 
-                let globalBadge = document.getElementById('global-state-badge');
-                globalBadge.textContent = globalState;
-                if(globalState === "RUNNING") {
-                    globalBadge.className = "ml-2 text-xs px-2 py-1 rounded-full font-bold bg-green-500 text-white shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse";
-                } else if(globalState === "PAUSED" || globalState === "PAUSING") {
-                    globalBadge.className = "ml-2 text-xs px-2 py-1 rounded-full font-bold bg-yellow-500 text-white shadow-[0_0_8px_rgba(234,179,8,0.6)]";
-                } else if(globalState === "ERROR") {
-                    globalBadge.className = "ml-2 text-xs px-2 py-1 rounded-full font-bold bg-red-600 text-white animate-pulse shadow-[0_0_8px_rgba(220,38,38,0.8)]";
-                    if (lastError) showErrorToast(lastError);
-                } else {
-                    globalBadge.className = "ml-2 text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600";
+                if (globalState === "IDLE" && !setupModalOpen) {
+                    openSetupModal();
                 }
                 
-                document.getElementById('god-status-dot').className = "inline-block w-3 h-3 rounded-full mr-1.5 transition-colors duration-500 " + (godRunning ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500");
-                document.getElementById('main-status-dot').className = "inline-block w-3 h-3 rounded-full mr-1.5 transition-colors duration-500 " + (mainRunning ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500");
+                let globalBadge = document.getElementById('global-state-badge');
+                if(globalBadge) {
+                    globalBadge.textContent = globalState;
+                    if(globalState === "RUNNING") {
+                        globalBadge.className = "ml-2 text-xs px-2 py-1 rounded-full font-bold bg-green-500 text-white shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse";
+                    } else if(globalState === "PAUSED" || globalState === "PAUSING") {
+                        globalBadge.className = "ml-2 text-xs px-2 py-1 rounded-full font-bold bg-yellow-500 text-white shadow-[0_0_8px_rgba(234,179,8,0.6)]";
+                    } else if(globalState === "ERROR") {
+                        globalBadge.className = "ml-2 text-xs px-2 py-1 rounded-full font-bold bg-red-600 text-white animate-pulse shadow-[0_0_8px_rgba(220,38,38,0.8)]";
+                        if (lastError) showErrorToast(lastError);
+                    } else {
+                        globalBadge.className = "ml-2 text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600";
+                    }
+                }
+                
+                let godDot = document.getElementById('god-status-dot');
+                if (godDot) godDot.className = "inline-block w-3 h-3 rounded-full mr-1.5 transition-colors duration-500 " + (godRunning ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500");
+                let mainDot = document.getElementById('main-status-dot');
+                if (mainDot) mainDot.className = "inline-block w-3 h-3 rounded-full mr-1.5 transition-colors duration-500 " + (mainRunning ? "bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)]" : "bg-red-500");
             } catch (err) {
                 console.error("System status fetch error:", err);
             }
@@ -101,59 +115,188 @@ let currentPostId = null;
                 const data = await res.json();
                 
                 const badge = document.getElementById('session-status-badge');
-                if (data.session_status === 'ACTIVE') {
-                    badge.className = "text-xs px-2 py-1 rounded-full font-bold bg-green-200 text-green-800";
-                    badge.innerText = "ACTIVE";
-                    hidePoliceWarning();
-                } else if (data.session_status === 'CLOSED_BY_POLICE') {
-                    badge.className = "text-xs px-2 py-1 rounded-full font-bold bg-red-600 text-white animate-pulse";
-                    badge.innerText = "POLICE DISPATCHED";
-                    showPoliceWarning();
-                } else {
-                    badge.className = "text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600";
-                    badge.innerText = data.session_status || "UNKNOWN";
-                    hidePoliceWarning();
+                if (badge) {
+                    if (data.session_status === 'ACTIVE') {
+                        badge.className = "text-xs px-2 py-1 rounded-full font-bold bg-green-200 text-green-800";
+                        badge.innerText = "ACTIVE";
+                        hidePoliceWarning();
+                    } else if (data.session_status === 'CLOSED_BY_POLICE') {
+                        badge.className = "text-xs px-2 py-1 rounded-full font-bold bg-red-600 text-white animate-pulse";
+                        badge.innerText = "POLICE DISPATCHED";
+                        showPoliceWarning();
+                    } else {
+                        badge.className = "text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600";
+                        badge.innerText = data.session_status || "UNKNOWN";
+                        hidePoliceWarning();
+                    }
                 }
 
                 const container = document.getElementById('bot-states-container');
-                container.innerHTML = '';
-                
-                const bots = data.states || data.bots || [];
-                if (bots && bots.length > 0) {
-                    bots.forEach(bot => {
-                        let eff = bot.effective_anger !== undefined ? bot.effective_anger : (bot.eff_anger || 0);
-                        let pct = Math.min(eff, 100);
-                        
-                        let angerTargets = typeof bot.anger_targets === 'object' ? bot.anger_targets : {};
-                        let targetHtml = Object.entries(angerTargets).map(([t, val]) => 
-                            `<div class="flex justify-between text-xs text-gray-600"><span>vs ${t}</span><span class="font-bold text-red-500">${val}</span></div>`
-                        ).join('');
+                if (container) {
+                    container.innerHTML = '';
+                    
+                    const bots = data.states || data.bots || [];
+                    if (bots && bots.length > 0) {
+                        bots.forEach(bot => {
+                            let eff = bot.effective_anger !== undefined ? bot.effective_anger : (bot.eff_anger || 0);
+                            let pct = Math.min(eff, 100);
+                            
+                            let angerTargets = typeof bot.anger_targets === 'object' ? bot.anger_targets : {};
+                            let targetHtml = Object.entries(angerTargets).map(([t, val]) => 
+                                `<div class="flex justify-between text-xs text-gray-600"><span>vs ${t}</span><span class="font-bold text-red-500">${val}</span></div>`
+                            ).join('');
 
-                        let botDockerName = "ameva-llm-" + bot.bot_name.toLowerCase().replace('_', '-');
-                        let isRunning = systemStatusMap[botDockerName] === "RUNNING";
-                        let statusDot = isRunning ? '<span class="inline-block w-3 h-3 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)] mr-1.5"></span>' : '<span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5 transition-colors duration-500"></span>';
+                            let botDockerName = "ameva-llm-" + bot.bot_name.toLowerCase().replace('_', '-');
+                            let isRunning = systemStatusMap.containers && systemStatusMap.containers[botDockerName] === "RUNNING";
+                            let statusDot = isRunning ? '<span class="inline-block w-3 h-3 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.8)] mr-1.5"></span>' : '<span class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5 transition-colors duration-500"></span>';
 
-                        let directiveText = bot.current_directive ? `<div class="mt-2 text-xs font-medium text-indigo-700 bg-indigo-50 p-2 rounded border border-indigo-100">🗣️ <b>현재 지침:</b> ${bot.current_directive}</div>` : '';
+                            let directiveText = bot.current_directive ? `<div class="mt-2 text-xs font-medium text-indigo-700 bg-indigo-50 p-2 rounded border border-indigo-100">🗣️ <b>현재 지침:</b> ${bot.current_directive}</div>` : '';
 
-                        container.innerHTML += `
-                            <div onclick="openInspector('${bot.bot_name}')" class="cursor-pointer hover:bg-indigo-50 hover:shadow-md bg-white bg-opacity-50 p-3 rounded-xl border-2 ${isRunning ? 'border-green-300' : 'border-transparent'} transition-all duration-300 transform hover:-translate-y-1">
-                                <div class="flex justify-between items-end mb-1">
-                                    <span class="font-bold text-gray-800 flex items-center">${statusDot}${bot.bot_name.toUpperCase()}</span>
-                                    <span class="text-xs font-black ${eff >= 50 ? 'text-red-600' : 'text-gray-500'}">Vector: ${eff.toFixed(1)}</span>
+                            container.innerHTML += `
+                                <div onclick="openInspector('${bot.bot_name}')" class="cursor-pointer hover:bg-indigo-50 hover:shadow-md bg-white bg-opacity-50 p-3 rounded-xl border-2 ${isRunning ? 'border-green-300' : 'border-transparent'} transition-all duration-300 transform hover:-translate-y-1">
+                                    <div class="flex justify-between items-end mb-1">
+                                        <span class="font-bold text-gray-800 flex items-center">${statusDot}${bot.bot_name.toUpperCase()}</span>
+                                        <span class="text-xs font-black ${eff >= 50 ? 'text-red-600' : 'text-gray-500'}">Vector: ${eff.toFixed(1)}</span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-1.5 mb-2">
+                                        <div class="bg-gradient-to-r from-yellow-400 to-red-600 h-1.5 rounded-full transition-all duration-1000" style="width: ${pct}%"></div>
+                                    </div>
+                                    <div class="space-y-0.5">
+                                        ${targetHtml || '<div class="text-xs text-gray-400">평온함</div>'}
+                                    </div>
+                                    ${directiveText}
                                 </div>
-                                <div class="w-full bg-gray-200 rounded-full h-1.5 mb-2">
-                                    <div class="bg-gradient-to-r from-yellow-400 to-red-600 h-1.5 rounded-full transition-all duration-1000" style="width: ${pct}%"></div>
-                                </div>
-                                <div class="space-y-0.5">
-                                    ${targetHtml || '<div class="text-xs text-gray-400">평온함</div>'}
-                                </div>
-                                ${directiveText}
-                            </div>
-                        `;
-                    });
+                            `;
+                        });
+                    }
                 }
             } catch (err) {
                 console.error("Bot state fetch error:", err);
+            }
+        }
+
+        // --- Modal & Setup Logic ---
+        async function openSetupModal() {
+            if (setupModalOpen) return;
+            setupModalOpen = true;
+            
+            const modal = document.getElementById('setup-modal');
+            modal.classList.remove('hidden');
+            
+            try {
+                const res = await fetch('/api/system/setup-info');
+                const data = await res.json();
+                
+                // Hardware Status
+                const hwStatus = document.getElementById('setup-hw-status');
+                const hwDesc = document.getElementById('setup-hw-desc');
+                const radioCuda = document.getElementById('radio-cuda');
+                const labelCuda = document.getElementById('label-cuda');
+                
+                hwStatus.textContent = data.hardware.details;
+                if (data.hardware.cuda_available) {
+                    hwStatus.className = "px-4 py-2 rounded-xl font-bold bg-green-100 text-green-700 border border-green-200";
+                    hwDesc.textContent = "NVIDIA GPU 및 CUDA 가속 사용 가능";
+                    radioCuda.disabled = false;
+                    labelCuda.classList.remove('opacity-50');
+                    labelCuda.title = "";
+                    // Auto-select CUDA if available
+                    radioCuda.checked = true;
+                } else if (data.hardware.gpu_found) {
+                    hwStatus.className = "px-4 py-2 rounded-xl font-bold bg-yellow-100 text-yellow-700 border border-yellow-200";
+                    hwDesc.textContent = "GPU는 감지되었으나 CUDA 연동을 확인할 수 없습니다. (Fallback CPU)";
+                } else {
+                    hwStatus.className = "px-4 py-2 rounded-xl font-bold bg-gray-100 text-gray-700 border border-gray-200";
+                    hwDesc.textContent = "GPU가 감지되지 않았습니다. 기본 CPU 모드로 구동됩니다.";
+                }
+                
+                // Populate Selects
+                const selects = ["main", "god", "bot1", "bot2", "bot3"].map(id => document.getElementById('setup-model-' + id));
+                selects.forEach(sel => {
+                    sel.innerHTML = "";
+                    data.models.forEach(m => {
+                        const opt = document.createElement('option');
+                        opt.value = m;
+                        opt.textContent = m;
+                        sel.appendChild(opt);
+                    });
+                });
+                
+            } catch (e) {
+                console.error("Failed to load setup info:", e);
+                document.getElementById('setup-hw-status').textContent = "오류 발생";
+                document.getElementById('setup-hw-desc').textContent = "서버와 통신할 수 없습니다.";
+            }
+        }
+
+        async function startSetupSequence() {
+            const btn = document.getElementById('btn-start-simulation');
+            btn.disabled = true;
+            btn.innerHTML = `<svg class="animate-spin w-5 h-5 mr-2 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path></svg> 준비 중...`;
+            
+            document.getElementById('setup-progress-container').classList.remove('hidden');
+            
+            const payload = {
+                inference_mode: document.querySelector('input[name="inference_mode"]:checked').value,
+                hardware_mode: document.querySelector('input[name="hardware_mode"]:checked').value,
+                model_main: document.getElementById('setup-model-main').value,
+                model_god: document.getElementById('setup-model-god').value,
+                model_bot1: document.getElementById('setup-model-bot1').value,
+                model_bot2: document.getElementById('setup-model-bot2').value,
+                model_bot3: document.getElementById('setup-model-bot3').value
+            };
+            
+            try {
+                await fetch('/api/control/setup_and_start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                
+                setupPolling = setInterval(pollSetupProgress, 500);
+            } catch (e) {
+                console.error("Setup sequence failed:", e);
+                btn.disabled = false;
+                btn.textContent = "재시도";
+            }
+        }
+
+        async function pollSetupProgress() {
+            try {
+                const res = await fetch('/api/system/startup-progress');
+                const data = await res.json();
+                
+                const pct = data.total > 0 ? Math.floor((data.completed / data.total) * 100) : 0;
+                
+                document.getElementById('setup-progress-bar').style.width = pct + "%";
+                document.getElementById('setup-progress-text').textContent = `[${data.completed}/${data.total}] ${pct}%`;
+                document.getElementById('setup-current-task').textContent = data.current_task;
+                
+                if (!data.is_running && data.completed > 0 && data.total > 0 && data.completed === data.total) {
+                    clearInterval(setupPolling);
+                    setTimeout(() => {
+                        document.getElementById('setup-modal').classList.add('hidden');
+                        setupModalOpen = false;
+                        document.getElementById('btn-start-simulation').disabled = false;
+                        document.getElementById('btn-start-simulation').innerHTML = '시뮬레이션 시작';
+                        document.getElementById('setup-progress-container').classList.add('hidden');
+                        fetchPostList(); // Refresh board (renamed from fetchPosts)
+                    }, 1500);
+                }
+            } catch (e) {
+                console.error("Progress polling failed:", e);
+            }
+        }
+        
+        async function requestNewSession() {
+            if (!confirm("현재 세션을 초기화하고 새로운 시뮬레이션 환경을 설정하시겠습니까?")) return;
+            
+            try {
+                await fetch('/api/control/stop', { method: 'POST' });
+                alert("현재 세션 중지 신호를 보냈습니다. 서버가 IDLE 상태로 전환되면 새로고침해주세요.");
+                setTimeout(() => location.reload(), 2000);
+            } catch (e) {
+                console.error(e);
             }
         }
 

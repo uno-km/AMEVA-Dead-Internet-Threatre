@@ -78,7 +78,12 @@ class LLMClient:
         try:
             # 컨테이너 시작 (docker compose up -d 사용으로 미존재 시 자동 생성)
             service_name = self.container_name.replace("ameva-", "")
-            subprocess.run(["docker", "compose", "-f", "docker/docker-compose.yml", "up", "-d", service_name], check=True, capture_output=True)
+            cmd = ["docker", "compose", "-f", "docker/docker-compose.yml"]
+            import os
+            if os.path.exists("docker/docker-compose.override.yml"):
+                cmd.extend(["-f", "docker/docker-compose.override.yml"])
+            cmd.extend(["up", "-d", service_name])
+            subprocess.run(cmd, check=True, capture_output=True)
             logger.info(f"[LIFECYCLE] '{self.container_name}' started. Waiting for API readiness...")
             
             # API 준비 대기 (Max 120 seconds)
@@ -107,7 +112,12 @@ class LLMClient:
         logger.info(f"[LIFECYCLE] Stopping container '{self.container_name}'...")
         try:
             service_name = self.container_name.replace("ameva-", "")
-            subprocess.run(["docker", "compose", "-f", "docker/docker-compose.yml", "stop", service_name], check=True, capture_output=True)
+            cmd = ["docker", "compose", "-f", "docker/docker-compose.yml"]
+            import os
+            if os.path.exists("docker/docker-compose.override.yml"):
+                cmd.extend(["-f", "docker/docker-compose.override.yml"])
+            cmd.extend(["stop", service_name])
+            subprocess.run(cmd, check=True, capture_output=True)
             logger.info(f"[LIFECYCLE] '{self.container_name}' stopped.")
         except Exception as e:
             logger.error(f"[LIFECYCLE ERROR] Failed to stop '{self.container_name}': {e}")
