@@ -427,6 +427,182 @@ class NewSessionReq(BaseModel):
     model_mode: str = "standard"
     chat_mode: str = "sequential"
 
+import os
+import subprocess
+import yaml
+
+startup_status = {"total": 0, "completed": 0, "current_task": "Waiting...", "is_running": False}
+
+@app.get("/api/system/setup-info")
+async def get_setup_info():
+    hardware_status = {"cpu": True, "gpu_found": False, "cuda_available": False, "details": "CPU Only"}
+    try:
+        # GPU 존재 여부 체크 (nvidia-smi)
+        result = await asyncio.to_thread(subprocess.run, ["nvidia-smi"], capture_output=True, text=True)
+        if result.returncode == 0:
+            hardware_status["gpu_found"] = True
+            hardware_status["cuda_available"] = True
+            hardware_status["details"] = "GPU + CUDA Available"
+        else:
+            hardware_status["details"] = "GPU Not Found (nvidia-smi failed)"
+    except Exception:
+        hardware_status["details"] = "GPU Not Found (nvidia-smi not in PATH)"
+
+    # 모델 파일 목록 읽기 (.gguf)
+    models_dir = os.path.join("models", "llm")
+    models = []
+    parent_models_dir = os.path.join("..", "models", "llm") # docker-compose 경로상 ../../models/llm
+    
+    check_dir = models_dir
+    if not os.path.exists(check_dir) and os.path.exists(parent_models_dir):
+        check_dir = parent_models_dir
+
+    if os.path.exists(check_dir):
+        for f in os.listdir(check_dir):
+            if f.endswith(".gguf"):
+                models.append(f)
+                
+    return {
+        "hardware": hardware_status,
+        "models": models
+    }
+
+@app.get("/api/system/startup-progress")
+async def get_startup_progress():
+    return startup_status
+
+class SetupStartReq(BaseModel):
+    inference_mode: str = "sequential"
+    hardware_mode: str = "cpu"
+    model_main: str = ""
+    model_god: str = ""
+    model_bot1: str = ""
+    model_bot2: str = ""
+    model_bot3: str = ""
+
+async def do_startup_sequence(req: SetupStartReq):
+    global startup_status
+    try:
+        startup_status["current_task"] = "Checking Docker daemon..."
+        try:
+            subprocess.run(["docker", "info"], check=True, capture_output=True)
+        except subprocess.CalledProcessError:
+            startup_status["current_task"] = "Starting Docker Desktop... (Please wait up to 1 min)"
+            docker_path = r"C:\Program Files\Docker\Docker\Docker Desktop.exe"
+            if os.path.exists(docker_path):
+                subprocess.Popen([docker_path])
+                docker_ready = False
+                for _ in range(45): # wait up to 90 seconds
+                    await asyncio.sleep(2)
+                    try:
+                        subprocess.run(["docker", "info"], check=True, capture_output=True)
+                        docker_ready = True
+                        break
+                    except Exception:
+                        pass
+                if not docker_ready:
+                    raise Exception("Docker Desktop took too long to start. Please start it manually.")
+            else:
+                raise Exception("Docker Desktop is not running and could not be found at C:\\Program Files\\Docker\\Docker\\Docker Desktop.exe.")
+
+        startup_status["current_task"] = "Stopping existing containers..."
+        cmd_down = ["docker", "compose", "-f", "docker/docker-compose.yml"]
+        if os.path.exists("docker/docker-compose.override.yml"):
+            cmd_down.extend(["-f", "docker/docker-compose.override.yml"])
+        cmd_down.append("down")
+        await asyncio.to_thread(subprocess.run, cmd_down, capture_output=True)
+
+        containers_to_start = ["dozzle"]
+        if req.inference_mode == "parallel":
+            containers_to_start.extend(["ameva-llm-main", "ameva-llm-god", "ameva-llm-bot-1", "ameva-llm-bot-2", "ameva-llm-bot-3"])
+        elif req.inference_mode == "local_single_model":
+            containers_to_start.extend(["ameva-llm-main"])
+            
+        startup_status["total"] = len(containers_to_start)
+        
+        for i, c in enumerate(containers_to_start):
+            startup_status["current_task"] = f"[{i+1}/{len(containers_to_start)}] Starting {c}..."
+            svc_name = c.replace("ameva-", "") if "ameva-" in c else c
+            cmd_up = ["docker", "compose", "-f", "docker/docker-compose.yml", "-f", "docker/docker-compose.override.yml", "up", "-d", svc_name]
+            await asyncio.to_thread(subprocess.run, cmd_up, capture_output=True)
+            startup_status["completed"] = i + 1
+            await asyncio.sleep(0.5)
+            
+        startup_status["current_task"] = "Startup complete. Preparing session..."
+        await asyncio.sleep(1)
+        startup_status["is_running"] = False
+        
+        state_manager.set_state(SystemState.RUNNING)
+        asyncio.create_task(run_session(inference_mode=req.inference_mode))
+    except Exception as e:
+        logger.error(f"Startup error: {e}")
+        startup_status["current_task"] = f"Error: {str(e)}"
+        startup_status["is_running"] = False
+        state_manager.push_event("ERROR", {"message": f"Startup failed: {str(e)}"})
+        state_manager.set_state(SystemState.ERROR)
+
+@app.post("/api/control/setup_and_start")
+async def setup_and_start(req: SetupStartReq):
+    if state_manager.state != SystemState.IDLE:
+        return {"error": "System is not in IDLE state."}
+        
+    state_manager.set_state(SystemState.RUNNING)
+    startup_status["is_running"] = True
+    startup_status["total"] = 5
+    startup_status["completed"] = 0
+    startup_status["current_task"] = "Generating configurations..."
+    
+    override = {
+        "version": "3.8",
+        "services": {}
+    }
+    
+    services = {
+        "llm-main": req.model_main,
+        "llm-god": req.model_god,
+        "llm-bot-1": req.model_bot1,
+        "llm-bot-2": req.model_bot2,
+        "llm-bot-3": req.model_bot3
+    }
+    
+    for svc, model in services.items():
+        if not model: continue
+        svc_config = {
+            "command": f"-m /models/llm/{model} -c 4096 --host 0.0.0.0 --port 8080"
+        }
+        if req.hardware_mode == "cuda":
+            svc_config["image"] = "ghcr.io/ggml-org/llama.cpp:server-cuda"
+            svc_config["deploy"] = {
+                "resources": {
+                    "reservations": {
+                        "devices": [
+                            {"driver": "nvidia", "count": "all", "capabilities": ["gpu"]}
+                        ]
+                    }
+                }
+            }
+        elif req.hardware_mode == "vulkan":
+            svc_config["image"] = "ghcr.io/ggml-org/llama.cpp:server-vulkan"
+            svc_config["deploy"] = {
+                "resources": {
+                    "reservations": {
+                        "devices": [
+                            {"driver": "nvidia", "count": "all", "capabilities": ["gpu"]}
+                        ]
+                    }
+                }
+            }
+        override["services"][svc] = svc_config
+        
+    try:
+        with open("docker/docker-compose.override.yml", "w", encoding="utf-8") as f:
+            yaml.dump(override, f)
+    except Exception as e:
+        logger.error(f"Failed to write override: {e}")
+        
+    asyncio.create_task(do_startup_sequence(req))
+    return {"message": "Setup and startup sequence initiated"}
+
 @app.post("/api/control/new")
 async def control_new(req: NewSessionReq = None):
     if state_manager.state != SystemState.IDLE:

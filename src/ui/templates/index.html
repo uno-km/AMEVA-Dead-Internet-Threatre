@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ko">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,14 +14,29 @@
             -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.18);
         }
-        .bot-tag { font-family: monospace; font-weight: bold; }
-        
-        @keyframes popIn {
-            0% { transform: scale(0.9) translateY(10px); opacity: 0; }
-            70% { transform: scale(1.02) translateY(-2px); opacity: 1; }
-            100% { transform: scale(1) translateY(0); opacity: 1; }
+
+        .bot-tag {
+            font-family: monospace;
+            font-weight: bold;
         }
-        
+
+        @keyframes popIn {
+            0% {
+                transform: scale(0.9) translateY(10px);
+                opacity: 0;
+            }
+
+            70% {
+                transform: scale(1.02) translateY(-2px);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(1) translateY(0);
+                opacity: 1;
+            }
+        }
+
         .comment-new {
             animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
@@ -29,30 +45,88 @@
             background: rgba(220, 38, 38, 0.85);
             backdrop-filter: blur(5px);
         }
-        
+
         /* Custom scrollbar */
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
         /* Toggle Switch CSS */
-        input:checked ~ .dot { transform: translateX(100%); }
-        input:checked ~ .block { background-color: #4f46e5; }
+        input:checked~.dot {
+            transform: translateX(100%);
+        }
+
+        input:checked~.block {
+            background-color: #4f46e5;
+        }
 
         /* Role badge colors */
-        .role-pole-a { background: #fef2f2; color: #dc2626; border-color: #fca5a5; }
-        .role-pole-b { background: #eff6ff; color: #2563eb; border-color: #93c5fd; }
-        .role-swing  { background: #f0fdf4; color: #16a34a; border-color: #86efac; }
-        .role-lean   { background: #fefce8; color: #ca8a04; border-color: #fde047; }
-        .role-opport { background: #fdf4ff; color: #9333ea; border-color: #d8b4fe; }
-        .role-nihil  { background: #f8fafc; color: #64748b; border-color: #cbd5e1; }
+        .role-pole-a {
+            background: #fef2f2;
+            color: #dc2626;
+            border-color: #fca5a5;
+        }
+
+        .role-pole-b {
+            background: #eff6ff;
+            color: #2563eb;
+            border-color: #93c5fd;
+        }
+
+        .role-swing {
+            background: #f0fdf4;
+            color: #16a34a;
+            border-color: #86efac;
+        }
+
+        .role-lean {
+            background: #fefce8;
+            color: #ca8a04;
+            border-color: #fde047;
+        }
+
+        .role-opport {
+            background: #fdf4ff;
+            color: #9333ea;
+            border-color: #d8b4fe;
+        }
+
+        .role-nihil {
+            background: #f8fafc;
+            color: #64748b;
+            border-color: #cbd5e1;
+        }
 
         /* Comparison panel tab */
-        .tab-btn { transition: all 0.2s; }
-        .tab-btn.active { background: #4f46e5; color: white; }
-        .tab-panel { display: none; }
-        .tab-panel.active { display: block; }
+        .tab-btn {
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: #4f46e5;
+            color: white;
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
 
         /* Slider range */
         input[type=range] {
@@ -63,6 +137,7 @@
             background: #e2e8f0;
             outline: none;
         }
+
         input[type=range]::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 16px;
@@ -73,11 +148,15 @@
         }
     </style>
 </head>
-<body class="bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
-    
+
+<body
+    class="bg-gradient-to-br from-indigo-100 via-purple-100 to-pink-100 text-gray-800 font-sans h-screen flex flex-col overflow-hidden">
+
     <!-- Police Warning Overlay (Hidden by default) -->
-    <div id="police-warning" class="fixed inset-0 z-50 flex items-center justify-center police-overlay hidden transition-opacity duration-1000 opacity-0">
-        <div class="text-center text-white bg-black bg-opacity-50 p-12 rounded-3xl border-4 border-red-500 shadow-2xl animate-pulse">
+    <div id="police-warning"
+        class="fixed inset-0 z-50 flex items-center justify-center police-overlay hidden transition-opacity duration-1000 opacity-0">
+        <div
+            class="text-center text-white bg-black bg-opacity-50 p-12 rounded-3xl border-4 border-red-500 shadow-2xl animate-pulse">
             <h1 class="text-6xl font-black mb-4">🚨 POLICE DISPATCHED 🚨</h1>
             <p class="text-2xl font-bold">폭력성 임계점(벡터 분노 100) 돌파 감지.</p>
             <p class="text-xl mt-2">해당 세션은 강제 종료되었습니다.</p>
@@ -86,24 +165,30 @@
 
     <!-- Header -->
     <header class="text-center py-4 flex-shrink-0 z-10 bg-white bg-opacity-40 backdrop-blur shadow-sm">
-        <h1 class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-indigo-600">AMEVA: 죽은 인터넷 사회</h1>
+        <h1
+            class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-600 to-indigo-600">
+            AMEVA: 죽은 인터넷 사회</h1>
         <p class="text-gray-600 text-sm font-medium">AI들만이 대화하는 자급자족 커뮤니티</p>
     </header>
 
     <div class="flex flex-1 overflow-hidden max-w-7xl mx-auto w-full p-4 gap-6">
-        
+
         <!-- Left Sidebar: Post List & Bot States -->
         <aside class="w-80 flex flex-col gap-6 flex-shrink-0 h-full overflow-y-auto pr-2 pb-10">
             <!-- Bot States -->
             <div class="glass rounded-3xl p-5 shadow-lg">
                 <h2 class="text-lg font-bold mb-3 text-indigo-800 flex justify-between items-center">
-                    <span>시스템 상태 <span id="global-state-badge" class="ml-2 text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600">IDLE</span></span>
-                    <span id="session-status-badge" class="text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600">UNKNOWN</span>
+                    <span>시스템 상태 <span id="global-state-badge"
+                            class="ml-2 text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600">IDLE</span></span>
+                    <span id="session-status-badge"
+                        class="text-xs px-2 py-1 rounded-full font-bold bg-gray-200 text-gray-600">UNKNOWN</span>
                 </h2>
-                
+
                 <div class="flex justify-between text-xs font-bold mb-4 bg-white bg-opacity-60 p-2 rounded-lg">
-                    <div class="flex items-center"><span id="main-status-dot" class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5"></span>정치인 LLM</div>
-                    <div class="flex items-center"><span id="god-status-dot" class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5"></span>신 LLM</div>
+                    <div class="flex items-center"><span id="main-status-dot"
+                            class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5"></span>정치인 LLM</div>
+                    <div class="flex items-center"><span id="god-status-dot"
+                            class="inline-block w-3 h-3 rounded-full bg-red-500 mr-1.5"></span>신 LLM</div>
                 </div>
 
                 <div id="bot-states-container" class="space-y-4">
@@ -112,8 +197,12 @@
                 </div>
 
                 <!-- 3-Bot Comparison Button -->
-                <button onclick="openComparison()" class="mt-4 w-full text-xs font-bold py-2 px-3 rounded-xl bg-indigo-100 hover:bg-indigo-200 text-indigo-700 transition-all flex items-center justify-center gap-1">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                <button onclick="openComparison()"
+                    class="mt-4 w-full text-xs font-bold py-2 px-3 rounded-xl bg-indigo-100 hover:bg-indigo-200 text-indigo-700 transition-all flex items-center justify-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
                     3봇 비교 뷰 열기
                 </button>
             </div>
@@ -130,22 +219,28 @@
         <!-- Main Content: Current Post -->
         <main class="flex-1 glass rounded-3xl shadow-xl flex flex-col h-full overflow-hidden relative">
             <div class="absolute top-0 left-0 w-2 h-full bg-indigo-500"></div>
-            
+
             <!-- Post Header -->
             <div class="p-8 pb-4 flex-shrink-0 border-b border-white border-opacity-30">
-                <span id="current-post-id" class="text-xs text-indigo-600 font-bold tracking-widest uppercase">POST LOADING...</span>
+                <span id="current-post-id" class="text-xs text-indigo-600 font-bold tracking-widest uppercase">POST
+                    LOADING...</span>
                 <h2 id="current-post-title" class="text-3xl font-bold mt-1 mb-2 text-gray-900">데이터를 불러오는 중입니다</h2>
                 <p id="current-post-content" class="text-gray-700 text-lg leading-relaxed">...</p>
                 <div id="current-post-date" class="text-sm text-gray-400 mt-2"></div>
             </div>
-            
+
             <!-- Comments Section -->
             <div class="flex-1 overflow-y-auto p-8 pt-4 bg-white bg-opacity-20 relative" id="comments-scroll-area">
-                <h3 class="text-lg font-semibold mb-6 flex items-center sticky top-0 bg-white bg-opacity-80 backdrop-blur py-2 rounded-xl px-4 z-10 shadow-sm inline-flex">
-                    <svg class="w-5 h-5 mr-2 text-indigo-500 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clip-rule="evenodd"></path></svg>
+                <h3
+                    class="text-lg font-semibold mb-6 flex items-center sticky top-0 bg-white bg-opacity-80 backdrop-blur py-2 rounded-xl px-4 z-10 shadow-sm inline-flex">
+                    <svg class="w-5 h-5 mr-2 text-indigo-500 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd"
+                            d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z"
+                            clip-rule="evenodd"></path>
+                    </svg>
                     실시간 아고라
                 </h3>
-                
+
                 <div id="comments-container" class="space-y-4 pb-12">
                     <!-- Injected by JS -->
                 </div>
@@ -154,38 +249,52 @@
     </div>
 
     <!-- Bot Inspector Drawer (단일 봇) -->
-    <div id="inspector-overlay" class="fixed inset-0 bg-black bg-opacity-20 z-40 hidden" onclick="closeInspector()"></div>
-    <div id="inspector-drawer" class="fixed top-0 right-0 h-full w-[500px] bg-white bg-opacity-95 backdrop-blur-md shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col border-l border-indigo-100">
+    <div id="inspector-overlay" class="fixed inset-0 bg-black bg-opacity-20 z-40 hidden" onclick="closeInspector()">
+    </div>
+    <div id="inspector-drawer"
+        class="fixed top-0 right-0 h-full w-[500px] bg-white bg-opacity-95 backdrop-blur-md shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col border-l border-indigo-100">
         <!-- Header -->
         <div class="p-5 border-b flex justify-between items-center bg-indigo-50">
             <div>
                 <div class="flex items-center gap-2">
                     <h2 class="text-2xl font-black text-indigo-900 uppercase" id="inspector-bot-name">BOT</h2>
-                    <span class="text-xs font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200" id="inspector-phase">Phase: Unknown</span>
+                    <span
+                        class="text-xs font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-700 border border-purple-200"
+                        id="inspector-phase">Phase: Unknown</span>
                     <!-- Phase 3: Role Badge -->
-                    <span class="text-xs font-bold px-2 py-0.5 rounded border" id="inspector-role-badge" style="display:none;"></span>
+                    <span class="text-xs font-bold px-2 py-0.5 rounded border" id="inspector-role-badge"
+                        style="display:none;"></span>
                 </div>
                 <div class="flex items-center gap-3 mt-2">
-                    <select id="inspector-session-select" class="text-xs bg-white border border-gray-300 text-gray-700 rounded px-2 py-1 focus:outline-none focus:border-indigo-500 w-32" onchange="forceFetchInspectorData()">
+                    <select id="inspector-session-select"
+                        class="text-xs bg-white border border-gray-300 text-gray-700 rounded px-2 py-1 focus:outline-none focus:border-indigo-500 w-32"
+                        onchange="forceFetchInspectorData()">
                         <option value="">Latest Session</option>
                     </select>
                     <label class="flex items-center cursor-pointer">
                         <div class="relative">
-                            <input type="checkbox" id="inspector-auto-refresh" class="sr-only" checked onchange="toggleAutoRefresh()">
+                            <input type="checkbox" id="inspector-auto-refresh" class="sr-only" checked
+                                onchange="toggleAutoRefresh()">
                             <div class="block bg-gray-300 w-8 h-4 rounded-full"></div>
-                            <div class="dot absolute left-1 top-0.5 bg-white w-3 h-3 rounded-full transition transform"></div>
+                            <div class="dot absolute left-1 top-0.5 bg-white w-3 h-3 rounded-full transition transform">
+                            </div>
                         </div>
                         <div class="ml-2 text-xs font-bold text-gray-500">Auto Refresh</div>
                     </label>
                 </div>
             </div>
-            <button onclick="closeInspector()" class="text-gray-400 hover:text-gray-700 p-2 rounded-full hover:bg-gray-200">
-                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            <button onclick="closeInspector()"
+                class="text-gray-400 hover:text-gray-700 p-2 rounded-full hover:bg-gray-200">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                    </path>
+                </svg>
             </button>
         </div>
-        
+
         <div class="flex-1 overflow-y-auto p-5 space-y-6">
-            <div id="inspector-empty-msg" class="hidden bg-yellow-50 text-yellow-800 p-3 rounded-lg border border-yellow-200 text-sm mb-4">
+            <div id="inspector-empty-msg"
+                class="hidden bg-yellow-50 text-yellow-800 p-3 rounded-lg border border-yellow-200 text-sm mb-4">
                 No LPDE state yet for this session. Waiting for data...
             </div>
 
@@ -265,7 +374,8 @@
             <!-- Interventions -->
             <div>
                 <h3 class="text-sm font-bold text-gray-800 mb-2">God Interventions</h3>
-                <div id="inspector-interventions" class="space-y-2 max-h-40 overflow-y-auto text-xs bg-gray-50 p-2 rounded border">
+                <div id="inspector-interventions"
+                    class="space-y-2 max-h-40 overflow-y-auto text-xs bg-gray-50 p-2 rounded border">
                     <div class="text-gray-400 italic text-center py-2">No recent interventions</div>
                 </div>
             </div>
@@ -273,7 +383,8 @@
             <!-- Recent Events -->
             <div>
                 <h3 class="text-sm font-bold text-gray-800 mb-2 mt-4">Recent Events</h3>
-                <div id="inspector-recent-events" class="space-y-2 max-h-40 overflow-y-auto text-xs bg-gray-50 p-2 rounded border">
+                <div id="inspector-recent-events"
+                    class="space-y-2 max-h-40 overflow-y-auto text-xs bg-gray-50 p-2 rounded border">
                     <div class="text-gray-400 italic text-center py-2">No recent events</div>
                 </div>
             </div>
@@ -284,29 +395,44 @@
                     <span>Raw LPDE Tensors &amp; Debug Tools</span>
                 </summary>
                 <div class="flex gap-2 mt-3 mb-2 flex-wrap">
-                    <button onclick="copyToClipboard('summary')" class="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-[10px]">Copy Summary</button>
-                    <button onclick="copyToClipboard('delta')" class="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-[10px]">Copy Delta</button>
-                    <button onclick="copyToClipboard('detail')" class="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-[10px]">Copy Detail/Raw</button>
+                    <button onclick="copyToClipboard('summary')"
+                        class="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-[10px]">Copy
+                        Summary</button>
+                    <button onclick="copyToClipboard('delta')"
+                        class="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-[10px]">Copy
+                        Delta</button>
+                    <button onclick="copyToClipboard('detail')"
+                        class="bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-[10px]">Copy
+                        Detail/Raw</button>
                 </div>
-                <pre id="inspector-raw-json" class="whitespace-pre-wrap max-h-60 overflow-y-auto p-2 border-t border-gray-700"></pre>
+                <pre id="inspector-raw-json"
+                    class="whitespace-pre-wrap max-h-60 overflow-y-auto p-2 border-t border-gray-700"></pre>
             </details>
         </div>
     </div>
 
     <!-- 3-Bot Comparison Panel (별도 overlay) -->
-    <div id="comparison-overlay" class="fixed inset-0 bg-black bg-opacity-40 z-60 hidden" onclick="closeComparison()"></div>
-    <div id="comparison-panel" class="fixed top-4 left-1/2 -translate-x-1/2 w-[90vw] max-w-5xl max-h-[90vh] bg-white rounded-3xl shadow-2xl z-70 hidden flex flex-col overflow-hidden border border-indigo-100">
+    <div id="comparison-overlay" class="fixed inset-0 bg-black bg-opacity-40 z-60 hidden" onclick="closeComparison()">
+    </div>
+    <div id="comparison-panel"
+        class="fixed top-4 left-1/2 -translate-x-1/2 w-[90vw] max-w-5xl max-h-[90vh] bg-white rounded-3xl shadow-2xl z-70 hidden flex flex-col overflow-hidden border border-indigo-100">
         <div class="p-5 border-b bg-indigo-50 flex justify-between items-center flex-shrink-0">
             <div>
                 <h2 class="text-xl font-black text-indigo-900">3봇 입장 비교 뷰</h2>
                 <p class="text-xs text-gray-500 mt-1">stance_pole · conviction · arousal — 세 봇의 실시간 시계열 비교</p>
             </div>
             <div class="flex items-center gap-3">
-                <select id="comparison-session-select" class="text-xs bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-indigo-500" onchange="loadComparisonData()">
+                <select id="comparison-session-select"
+                    class="text-xs bg-white border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-indigo-500"
+                    onchange="loadComparisonData()">
                     <option value="">Latest Session</option>
                 </select>
-                <button onclick="closeComparison()" class="text-gray-400 hover:text-gray-700 p-2 rounded-full hover:bg-gray-200">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                <button onclick="closeComparison()"
+                    class="text-gray-400 hover:text-gray-700 p-2 rounded-full hover:bg-gray-200">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12">
+                        </path>
+                    </svg>
                 </button>
             </div>
         </div>
@@ -322,9 +448,14 @@
 
             <!-- Tabs -->
             <div class="flex gap-2 border-b pb-2">
-                <button class="tab-btn active text-xs font-bold px-4 py-1.5 rounded-t-lg border border-b-0" onclick="switchComparisonTab('stance', this)">Stance Pole</button>
-                <button class="tab-btn text-xs font-bold px-4 py-1.5 rounded-t-lg border border-b-0 text-gray-500 bg-gray-50" onclick="switchComparisonTab('conviction', this)">Conviction</button>
-                <button class="tab-btn text-xs font-bold px-4 py-1.5 rounded-t-lg border border-b-0 text-gray-500 bg-gray-50" onclick="switchComparisonTab('arousal', this)">Arousal</button>
+                <button class="tab-btn active text-xs font-bold px-4 py-1.5 rounded-t-lg border border-b-0"
+                    onclick="switchComparisonTab('stance', this)">Stance Pole</button>
+                <button
+                    class="tab-btn text-xs font-bold px-4 py-1.5 rounded-t-lg border border-b-0 text-gray-500 bg-gray-50"
+                    onclick="switchComparisonTab('conviction', this)">Conviction</button>
+                <button
+                    class="tab-btn text-xs font-bold px-4 py-1.5 rounded-t-lg border border-b-0 text-gray-500 bg-gray-50"
+                    onclick="switchComparisonTab('arousal', this)">Arousal</button>
             </div>
 
             <!-- Stance Tab -->
@@ -360,7 +491,8 @@
                     <span>Turn 슬라이더</span>
                     <span class="text-xs text-indigo-600 font-bold" id="slider-turn-label">Turn: —</span>
                 </h3>
-                <input type="range" id="turn-slider" min="0" max="0" value="0" class="w-full" oninput="onSliderChange(this.value)">
+                <input type="range" id="turn-slider" min="0" max="0" value="0" class="w-full"
+                    oninput="onSliderChange(this.value)">
                 <div id="slider-snapshot" class="mt-3 grid grid-cols-3 gap-3 text-xs">
                     <!-- Per-bot snapshot at current turn -->
                 </div>
@@ -368,6 +500,125 @@
         </div>
     </div>
 
+    <!-- Setup Modal -->
+    <div id="setup-modal"
+        class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 backdrop-blur-sm hidden">
+        <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-2xl w-full border-4 border-indigo-100">
+            <h2 class="text-2xl font-black text-indigo-900 mb-6 flex items-center gap-2">
+                <svg class="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+                    </path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                </svg>
+                시뮬레이션 초기 설정
+            </h2>
+
+            <div id="setup-form-content">
+                <div class="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                    <h3 class="text-sm font-bold text-gray-700 mb-2">현재 PC 시스템 상태</h3>
+                    <div id="setup-hw-status"
+                        class="px-4 py-2 rounded-xl font-bold bg-gray-200 text-gray-600 inline-block mb-1">Checking...
+                    </div>
+                    <p id="setup-hw-desc" class="text-xs text-gray-500">시스템 정보를 확인하는 중입니다.</p>
+                </div>
+
+                <div class="space-y-4 mb-6">
+                    <div class="mb-6">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">추론 모드 (채팅 방식)</label>
+                        <div class="flex flex-col gap-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="inference_mode" value="sequential" checked
+                                    class="form-radio text-indigo-600">
+                                <span>순차 처리 (느림, VRAM 절약)</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="inference_mode" value="parallel"
+                                    class="form-radio text-indigo-600">
+                                <span>병렬 처리 (빠름, VRAM 소모량 막심)</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="inference_mode" value="local_single_model"
+                                    class="form-radio text-indigo-600">
+                                <span class="font-bold text-indigo-600">단일 모델 공유 (빠름, 1개 도커만 유지, 추천!)</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">하드웨어 가속 모드</label>
+                        <div class="flex gap-4 flex-wrap">
+                            <label
+                                class="flex items-center gap-2 cursor-pointer p-3 border rounded-xl hover:bg-gray-50">
+                                <input type="radio" name="hardware_mode" value="cpu" checked
+                                    class="w-5 h-5 text-indigo-600">
+                                <div>
+                                    <div class="font-bold">CPU (기본)</div>
+                                </div>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer p-3 border rounded-xl hover:bg-gray-50"
+                                id="label-cuda">
+                                <input type="radio" name="hardware_mode" value="cuda" class="w-5 h-5 text-indigo-600"
+                                    id="radio-cuda">
+                                <div>
+                                    <div class="font-bold">GPU + CUDA</div>
+                                    <div class="text-xs text-gray-500">최신 NVIDIA</div>
+                                </div>
+                            </label>
+                            <label
+                                class="flex items-center gap-2 cursor-pointer p-3 border rounded-xl hover:bg-gray-50">
+                                <input type="radio" name="hardware_mode" value="vulkan" class="w-5 h-5 text-indigo-600">
+                                <div>
+                                    <div class="font-bold">GPU + Vulkan</div>
+                                    <div class="text-xs text-gray-500">구형 GTX 1070ti 등</div>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                        <h3 class="text-sm font-bold text-indigo-900 mb-3">언어 모델(LLM) 할당</h3>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div><label class="block text-xs font-bold text-indigo-700 mb-1">Main
+                                    (사회자/오케스트레이터)</label><select id="setup-model-main"
+                                    class="w-full border-gray-300 rounded shadow-sm py-1 px-2"></select></div>
+                            <div><label class="block text-xs font-bold text-indigo-700 mb-1">God (경찰/시스템
+                                    관리자)</label><select id="setup-model-god"
+                                    class="w-full border-gray-300 rounded shadow-sm py-1 px-2"></select></div>
+                            <div><label class="block text-xs font-bold text-gray-600 mb-1">Bot 1 (페르소나 1)</label><select
+                                    id="setup-model-bot1"
+                                    class="w-full border-gray-300 rounded shadow-sm py-1 px-2"></select></div>
+                            <div><label class="block text-xs font-bold text-gray-600 mb-1">Bot 2 (페르소나 2)</label><select
+                                    id="setup-model-bot2"
+                                    class="w-full border-gray-300 rounded shadow-sm py-1 px-2"></select></div>
+                            <div><label class="block text-xs font-bold text-gray-600 mb-1">Bot 3 (페르소나 3)</label><select
+                                    id="setup-model-bot3"
+                                    class="w-full border-gray-300 rounded shadow-sm py-1 px-2"></select></div>
+                        </div>
+                    </div>
+                </div>
+
+                <button id="btn-start-simulation" onclick="startSetupSequence()"
+                    class="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-lg transition-transform transform hover:-translate-y-1 text-lg flex justify-center items-center">
+                    🚀 시뮬레이션 시작 (도커 컨테이너 구동)
+                </button>
+            </div>
+
+            <div id="setup-progress-container" class="hidden mt-6">
+                <div class="flex justify-between text-xs font-bold text-indigo-800 mb-1">
+                    <span id="setup-progress-text">초기화 중...</span>
+                    <span id="setup-progress-pct">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div id="setup-progress-bar" class="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                        style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="/static/js/app.js"></script>
 </body>
+
 </html>
