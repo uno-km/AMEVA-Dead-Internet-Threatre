@@ -289,7 +289,7 @@ let currentPostId = null;
                 model_bot1: document.getElementById('setup-model-bot1') ? document.getElementById('setup-model-bot1').value : "",
                 model_bot2: document.getElementById('setup-model-bot2') ? document.getElementById('setup-model-bot2').value : "",
                 model_bot3: document.getElementById('setup-model-bot3') ? document.getElementById('setup-model-bot3').value : "",
-                llama_server_path: document.getElementById('setup-llama-path') ? document.getElementById('setup-llama-path').value : "llama-server"
+                llama_server_path: "자동 (내장 서버)"
             };
             
             try {
@@ -1108,6 +1108,24 @@ let currentPostId = null;
         setInterval(fetchBotStates, 1500);
         setInterval(fetchPostList, 3000);
         setInterval(fetchPostDetail, 1000);
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initApp();
+        });
+
+        window.browseLlamaPath = async function() {
+            try {
+                const res = await fetch('/api/system/browse-file');
+                const data = await res.json();
+                if (data.path) {
+                    document.getElementById('setup-llama-path').value = data.path;
+                } else if (data.error) {
+                    console.error("Browse error:", data.error);
+                }
+            } catch (e) {
+                console.error("Failed to browse path:", e);
+            }
+        };
 
         // Resume fast polling if tab becomes visible
         document.addEventListener('visibilitychange', () => {

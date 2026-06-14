@@ -1,4 +1,5 @@
 import asyncio
+import time
 from typing import Optional
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, Depends, Query
@@ -484,9 +485,9 @@ def get_native_llama_cmd(server_path: str, model_name: str, hardware_mode: str) 
         if os.path.exists(parent_path):
             model_path = parent_path
             
-    # If the user provided just "llama-server" and it's not in PATH, use python -m llama_cpp.server
+    # If the user provided just "llama-server" or "자동 (내장 서버)" and it's not in PATH, use python -m llama_cpp.server
     cmd = []
-    if server_path == "llama-server" and shutil.which("llama-server") is None:
+    if (server_path == "llama-server" or server_path == "자동 (내장 서버)") and shutil.which("llama-server") is None:
         cmd = [sys.executable, "-m", "llama_cpp.server"]
     else:
         cmd = [server_path]
@@ -525,8 +526,6 @@ def start_native_server(server_path: str, model_name: str, hardware_mode: str):
             
         native_server_process = subprocess.Popen(
             cmd,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
             startupinfo=startupinfo
         )
         logger.info(f"[NATIVE] Server process started with PID {native_server_process.pid}")
@@ -619,6 +618,30 @@ async def get_setup_info():
         "models": models
     }
 
+@app.get("/api/system/browse-file")
+async def browse_file():
+    import tkinter as tk
+    from tkinter import filedialog
+    import asyncio
+    
+    def _open_dialog():
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes('-topmost', True)
+        file_path = filedialog.askopenfilename(
+            title="Select llama-server executable",
+            filetypes=[("Executables", "*.exe"), ("All Files", "*.*")]
+        )
+        root.destroy()
+        return file_path
+        
+    try:
+        path = await asyncio.to_thread(_open_dialog)
+        return {"path": path if path else ""}
+    except Exception as e:
+        logger.error(f"Failed to open file dialog: {e}")
+        return {"error": str(e), "path": ""}
+
 @app.get("/api/system/startup-progress")
 async def get_startup_progress():
     return startup_status
@@ -651,10 +674,21 @@ async def do_startup_sequence(req: SetupStartReq):
             
             # Wait for ready url
             from src.orchestration.runner import wait_for_http_ready
-            ready_url = "http://localhost:8101/health"
-            ready = await wait_for_http_ready(ready_url, timeout=60, interval=1)
+            ready_url = "http://localhost:8101/v1/models"
+            
+            start_t = time.time()
+            ready = False
+            while time.time() - start_t < 300:
+                if native_server_process and native_server_process.poll() is not None:
+                    raise RuntimeError(f"로컬 파이썬 서버(llama_cpp.server)가 실행 직후 종료되었습니다 (종료 코드: {native_server_process.returncode}). llama-cpp-python이 설치되지 않았을 수 있습니다. run.bat를 실행해 종속성을 설치해 주세요.")
+                
+                # Check for 2 seconds at a time
+                if await wait_for_http_ready(ready_url, timeout=2, interval=1):
+                    ready = True
+                    break
+                    
             if not ready:
-                raise RuntimeError("로컬 llama-server 기동 실패 (헬스체크 타임아웃)")
+                raise RuntimeError("로컬 파이썬 서버(llama_cpp.server) 기동 실패 (헬스체크 타임아웃: 300초 경과)")
                 
             startup_status["completed"] = 1
             state_manager.current_activity = "로컬 llama-server 구동 완료. 세션을 준비 중..."
