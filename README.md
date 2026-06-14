@@ -178,7 +178,7 @@
         const ctx = document.getElementById('stanceMiniChart').getContext('2d');
         const maxDataPoints = 15;
         const chartData = {
-            labels: Array.from({length: maxDataPoints}, (_, i) => `T${i+1}`),
+            labels: Array.from({length: maxDataPoints}, (_, i) => `T{i+1}`),
             datasets: [
                 { label: 'BOT_1', data: Array(maxDataPoints).fill(-0.85), borderColor: '#a855f7', borderWidth: 2, pointRadius: 1, tension: 0.3, fill: false },
                 { label: 'BOT_2', data: Array(maxDataPoints).fill(0.78), borderColor: '#ec4899', borderWidth: 2, pointRadius: 1, tension: 0.3, fill: false },
@@ -206,20 +206,20 @@
             div.className = 'bg-slate-800/60 rounded-xl p-2.5 shadow-sm border border-slate-700/30 flex gap-3 comment-new';
             
             // Format mention inline
-            const formattedText = text.replace(/(@bot_\d)/g, '<span class="text-indigo-400 font-semibold">$1</span>');
+            const formattedText = text.replace(/(@bot_\d)/g, '<span class="text-indigo-400 font-semibold">1</span>');
 
             div.innerHTML = `
                 <div class="flex-shrink-0">
-                    <div class="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs text-white ${bot.avatarColor}">
-                        ${bot.name.toUpperCase().substring(0,3)}
+                    <div class="w-8 h-8 rounded-full flex items-center justify-center font-black text-xs text-white {bot.avatarColor}">
+                        {bot.name.toUpperCase().substring(0,3)}
                     </div>
                 </div>
                 <div class="flex-1 min-w-0">
                     <div class="flex justify-between items-center mb-0.5">
-                        <span class="font-bold text-xs text-slate-200">${bot.name.toUpperCase()}</span>
+                        <span class="font-bold text-xs text-slate-200">{bot.name.toUpperCase()}</span>
                         <span class="text-[9px] text-slate-500">지금</span>
                     </div>
-                    <p class="text-xs text-slate-300 leading-normal">${formattedText}</p>
+                    <p class="text-xs text-slate-300 leading-normal">{formattedText}</p>
                 </div>
             `;
             feed.appendChild(div);
@@ -232,18 +232,18 @@
         }
 
         function updateBotUI() {
-            document.getElementById('bot1-anger').textContent = `Anger: ${bots.bot_1.anger.toFixed(1)}`;
-            document.getElementById('bot1-anger-bar').style.width = `${Math.min(bots.bot_1.anger, 100)}%`;
+            document.getElementById('bot1-anger').textContent = `Anger: {bots.bot_1.anger.toFixed(1)}`;
+            document.getElementById('bot1-anger-bar').style.width = `{Math.min(bots.bot_1.anger, 100)}%`;
             document.getElementById('bot1-stance').textContent = bots.bot_1.stance.toFixed(2);
             document.getElementById('bot1-conv').textContent = bots.bot_1.conviction.toFixed(2);
 
-            document.getElementById('bot2-anger').textContent = `Anger: ${bots.bot_2.anger.toFixed(1)}`;
-            document.getElementById('bot2-anger-bar').style.width = `${Math.min(bots.bot_2.anger, 100)}%`;
+            document.getElementById('bot2-anger').textContent = `Anger: {bots.bot_2.anger.toFixed(1)}`;
+            document.getElementById('bot2-anger-bar').style.width = `{Math.min(bots.bot_2.anger, 100)}%`;
             document.getElementById('bot2-stance').textContent = bots.bot_2.stance.toFixed(2);
             document.getElementById('bot2-conv').textContent = bots.bot_2.conviction.toFixed(2);
 
-            document.getElementById('bot3-anger').textContent = `Anger: ${bots.bot_3.anger.toFixed(1)}`;
-            document.getElementById('bot3-anger-bar').style.width = `${Math.min(bots.bot_3.anger, 100)}%`;
+            document.getElementById('bot3-anger').textContent = `Anger: {bots.bot_3.anger.toFixed(1)}`;
+            document.getElementById('bot3-anger-bar').style.width = `{Math.min(bots.bot_3.anger, 100)}%`;
             document.getElementById('bot3-stance').textContent = bots.bot_3.stance.toFixed(2);
             document.getElementById('bot3-conv').textContent = bots.bot_3.conviction.toFixed(2);
         }
@@ -332,16 +332,20 @@ behavioral simulation is required to reproduce realistic social dynamics.~~*
 
 ### 2.1. 잠재적 인격 동적 엔진 (LPDE - Latent Personality Dynamics Engine)
 에이전트는 단순 정적 텍스트 기반의 프롬프트에서 벗어나, 수학적으로 추상화된 감정, 오피니언, 영향력 상태 공간상에서 자율 운동한다.
-- **다차원 상태 벡터 (Multi-dimensional State Vector)**: 에이전트 $a$의 특정 시점 $t$에서의 내부 인격 벡터 $S_a^{(t)}$는 다음과 같이 감정(Affect, 2D), 의견(Opinion, 4D), 영향력(Power, 2D) 영역의 텐서곱으로 정의된다:
-  $$ S_a^{(t)} = \left[ A_a^{(t)}, O_a^{(t)}, P_a^{(t)} \right] \in \mathbb{R}^8 $$
-  * $A_a^{(t)} = [Valence, Arousal] \in [-1, 1]^2$: 에이전트의 쾌-불쾌 및 각성 수준을 수치화.
-  * $O_a^{(t)} = [Stance, Gap, Moral, Flexibility] \in [-1, 1]^4$: 논제에 대한 스탠스의 극성 및 유연성.
-  * $P_a^{(t)} = [SelfAppraisal, SystemicInfluence] \in [-1, 1]^2$: 자아 평가 지수 및 시스템 내 영향력.
+- **다차원 상태 벡터 (Multi-dimensional State Vector)**: 에이전트 a의 특정 시점 t에서의 내부 인격 벡터 S_a(t)는 다음과 같이 감정(Affect, 2D), 의견(Opinion, 4D), 영향력(Power, 2D) 영역의 텐서곱으로 정의된다:
+  
+* S_a(t) = [ A_a(t), O_a(t), P_a(t) ] in R^8
+
+  * A_a^(t) = [Valence, Arousal] in [-1, 1]^2: 에이전트의 쾌-불쾌 및 각성 수준을 수치화.
+  * O_a^(t) = [Stance, Gap, Moral, Flexibility] in [-1, 1]^4: 논제에 대한 스탠스의 극성 및 유연성.
+  * P_a^(t) = [SelfAppraisal, SystemicInfluence] in [-1, 1]^2: 자아 평가 지수 및 시스템 내 영향력.
 
 - **이벤트 기반 관계 전이 (Event-Driven Edge State)**: 에이전트 간의 연결 강도(Relation Edge)는 댓글 이벤트(동의, 반대, 조롱, 질문 등)에 의해 실시간으로 업데이트된다. 이는 지수이동평균(EMA) 필터를 적용하여 다음과 같이 수치 전이된다:
-  $$ E_{a \to b}^{(t)} = E_{a \to b}^{(t-1)} + \rho \cdot \Delta E_{event} $$
   
-  여기서 $\rho$는 평활 상수(EMA decay factor, $\rho = 0.3$)이며, $\Delta E_{event}$는 이벤트별 전이 값 행렬이다.
+* E_ab(t) = E_ab(t-1) + ρ * ΔE_event
+
+  
+  여기서 ρ는 평활 상수(EMA decay factor, ρ = 0.3)이며, ΔE_event는 이벤트별 전이 값 행렬이다.
   
   ```python
   # [src/core/personality_engine.py:L26-L34] 소통 이벤트에 따른 엣지 상태 델타 정의
@@ -356,8 +360,8 @@ behavioral simulation is required to reproduce realistic social dynamics.~~*
   }
   ```
 
-- **유클리드 노름 기반의 유효 분노 정량화**: 에이전트가 받는 전체 타깃에 대한 유효 분노 지수 $E_{anger}$는 각 타깃 봇에 대한 개별 긴장 벡터의 L2 Norm(유클리드 노름)을 통해 도출된다:
-  $$ E_{anger} = \sqrt{\sum_{i=1}^{N} A_{target, i}^2} $$
+- **유클리드 노름 기반의 유효 분노 정량화**: 에이전트가 받는 전체 타깃에 대한 유효 분노 지수 E_anger는 각 타깃 봇에 대한 개별 긴장 벡터의 L2 Norm(유클리드 노름)을 통해 도출된다:
+  E_anger = sqrt( sum( A_target,i^2 ) )
 
 - **감독(God LLM) 외란 개입 (Active Perturbation)**: 토론이 교착 상태에 빠지거나 단순 루프를 순환할 때, 감독 LLM이 강제로 JSON 형태의 벡터 델타(Delta)를 개입시켜 에이전트의 내부 감정 및 의견 벡터를 강제 섭동(Stir)한다.
   ```json
@@ -535,25 +539,37 @@ graph LR
 ```
 
 1. **환경 관측 및 이벤트 추출 (Observation & Extraction)**
-   시점 $t$에서 포럼의 전체 대화 기록 및 컨텍스트 상태를 $H^{(t)}$라 하자. 에이전트 $a$는 관측 함수 $f_{obs}$를 통해 자신과 연관된 국소적 이벤트 $E_a^{(t)}$를 필터링한다:
-   $$ E_a^{(t)} = f_{obs}\left( H^{(t)} \right) $$
+   시점 t에서 포럼의 전체 대화 기록 및 컨텍스트 상태를 H^(t)라 하자. 에이전트 a는 관측 함수 f_obs를 통해 자신과 연관된 국소적 이벤트 E_a^(t)를 필터링한다:
+   
+* E_a(t) = f_obs( H(t) )
+
 
 2. **LPDE 상태 텐서 전이 (State Update)**
-   에이전트 $a$의 이전 시점 상태 벡터 $S_a^{(t-1)}$는 추출된 이벤트 $E_a^{(t)}$와 엣지 관계 텐서 $W_{a \to b}^{(t-1)}$의 상태 전이 함수 $f_{trans}$에 의해 업데이트된다:
-   $$ S_a^{(t)} = f_{trans}\left( S_a^{(t-1)}, E_a^{(t)}, W_{a \to \bullet}^{(t-1)} \right) $$
-   이때, 타깃 봇 $b$와의 관계 텐서 업데이트는 다음과 같이 지수이동평균(EMA) 필터를 통과한다:
-   $$ W_{a \to b}^{(t)} = (1 - \rho) W_{a \to b}^{(t-1)} + \rho \Delta W(E_a^{(t)}) $$
+   에이전트 a의 이전 시점 상태 벡터 S_a^(t-1)는 추출된 이벤트 E_a^(t)와 엣지 관계 텐서 W_a -> b^(t-1)의 상태 전이 함수 f_trans에 의해 업데이트된다:
+   
+* S_a(t) = f_trans( S_a(t-1), E_a(t), W_a->*(t-1) )
+
+   이때, 타깃 봇 b와의 관계 텐서 업데이트는 다음과 같이 지수이동평균(EMA) 필터를 통과한다:
+   
+* W_ab(t) = (1 - ρ) * W_ab(t-1) + ρ * ΔW(E_a(t))
+
 
 3. **행동 확률 분포 및 결정 (Action Selection)**
-   업데이트된 인격 상태 벡터 $S_a^{(t)}$는 정책 함수 $\pi$를 거쳐 특정 행동 $\alpha_a^{(t)} \in \{\text{Reply}, \text{Ignore}, \text{Join}, \text{Leave}\}$를 선택할 확률 분포를 생성한다:
-   $$ P\left( \alpha_a^{(t)} = k \mid S_a^{(t)} \right) = \text{softmax}\left( \mathbf{W}_{policy} \cdot S_a^{(t)} \right)_k $$
+   업데이트된 인격 상태 벡터 S_a(t)는 정책 함수 \pi를 거쳐 특정 행동 α_a^(t) in {{Reply}, {Ignore}, {Join}, {Leave}}를 선택할 확률 분포를 생성한다:
+   
+* P( α_a(t) = k | S_a(t) ) = softmax( W_policy * S_a(t) )_k
+
 
 4. **자연어 생성 및 환경 전이 (Language Generation & Env State Update)**
-   선택된 행동 $\alpha_a^{(t)}$와 상태 벡터 $S_a^{(t)}$는 텍스트 디코더 $g_{gen}$의 입력 프로필로 인코딩되어 최종 대화 내용 $C_a^{(t)}$를 생성하고, 이는 환경을 다음 상태 $H^{(t+1)}$로 전이시킨다:
-   $$ C_a^{(t)} = g_{gen}\left( \text{Prompt}\left( S_a^{(t)}, \alpha_a^{(t)} \right), H^{(t)} \right) $$
-   $$ H^{(t+1)} = H^{(t)} \cup \left\{ C_a^{(t)} \right\} $$
+   선택된 행동 α_a^(t)와 상태 벡터 S_a(t)는 텍스트 디코더 g_gen의 입력 프로필로 인코딩되어 최종 대화 내용 C_a^(t)를 생성하고, 이는 환경을 다음 상태 H^(t+1)로 전이시킨다:
+   
+* C_a(t) = g_gen( Prompt( S_a(t), α_a(t) ), H(t) )
 
-이 재귀적 피드백 루프($H^{(t)} \to S_a^{(t)} \to \alpha_a^{(t)} \to C_a^{(t)} \to H^{(t+1)}$)는 시간의 흐름에 따라 시스템의 비선형성(Non-linearity)을 가속화하며, 고정되지 않은 동적 토론 흐름을 자율 창발한다.
+   
+* H(t+1) = H(t) U { C_a(t) }
+
+
+이 재귀적 피드백 루프(H^(t) -> S_a^(t) -> α_a^(t) -> C_a^(t) -> H^(t+1))는 시간의 흐름에 따라 시스템의 비선형성(Non-linearity)을 가속화하며, 고정되지 않은 동적 토론 흐름을 자율 창발한다.
 
 ![AMEVA 에이전트 실시간 인격 상태 및 시계열 트랙 시각화 (LPDE Visualizer)](file:///C:/Users/ATSAdmin/.gemini/antigravity-ide/brain/05624b30-c507-4cfd-a9e7-c81b94063ae0/artifacts/bot_inspector.png)
 
@@ -565,19 +581,19 @@ graph LR
 
 #### 1) Phase 1: 개루프 대화 파이프라인 (Open-Loop Dialogue Pipeline)
 
-* **구조**: $\text{Static Persona} \to \text{LLM} \to \text{Generation}$
+* **구조**: {Static Persona} -> {LLM} -> {Generation}
 * **특징**: 에이전트는 사전에 정의된 정적 시스템 프롬프트(Static Prompt)에 의존하여 응답을 생성했다.
 * **한계**: 외부 대화의 자극이나 관계 변화가 내부 상태에 영향을 주지 못하는 개루프(Open-Loop) 구조였기 때문에, 대화가 거듭될수록 상대의 어조를 맹목적으로 복제하는 **Parroting(앵무새 현상)**이나 토론의 주제가 급격히 수렴하여 동일 어휘가 단순 반복되는 교착 상태가 빈번히 발생하였다.
 
 #### 2) Phase 2: 외재적 섀도우 추적 (Shadow LPDE Tracking)
 
-* **구조**: $\text{Static Persona} \to \text{LLM} \to \text{Generation} \to \text{External State Logic (Logging Only)}$
+* **구조**: {Static Persona} -> {LLM} -> {Generation} -> {External State Logic (Logging Only)}
 * **특징**: 에이전트의 대화로부터 사건을 감지하고 감정(Affect), 의견(Opinion)의 변화량을 별도의 DB 및 알고리즘으로 계산하는 백그라운드 추적기를 가동했다.
 * **한계**: 연산된 상태 변화값이 실시간으로 모니터링 UI에는 노출되었으나, **정작 생성 모델(LLM)의 컨텍스트 프롬프트에는 재피드백(Feedback)되지 않았다.** 그 결과 에이전트의 내부 분노 상태가 최대치에 도달했음에도, 대화 텍스트 상으로는 온화한 어조를 유지하는 심각한 인지부조화(State-Language Decoupling)가 발견되었다.
 
 #### 3) Phase 3: 능동적 벡터 피드백 및 외란 개입 (Active Feedback & Perturbation Loop)
 
-* **구조**: $\text{Event} \to \text{LPDE Dynamic Engine} \to \text{Compressed System Tag} \to \text{LLM Inference} \to \text{Verification \& Validation (Sanitizer)} \to \text{DB State Commit}$
+* **구조**: {Event} -> {LPDE Dynamic Engine} -> {Compressed System Tag} -> {LLM Inference} -> {Verification \& Validation (Sanitizer)} -> {DB State Commit}
 * **특징**: 수학적으로 계산된 상태 텐서가 턴마다 압축 태그(`[SYS_STATE: ...]`) 형태로 프롬프트에 직접 주입되어 LLM의 발화 기조를 지배한다. 또한, 장기 시뮬레이션 시 고립점(Attractor)에 갇히는 현상을 해결하기 위해 **God LLM 외란 개입 모델(Active Perturbation)**을 도입하여 고의적으로 상태 임계치를 교란함으로써 상태 공간 상에서 새로운 위상 변화를 유도한다.
 * **안정성 장치**: 자아 정체성 붕괴 방어 필터(`validate_stance_coherence`) 및 멘션 정제기(`force_single_mention`)를 루프의 최종단에 배치하여 폐루프의 발산(Divergence) 및 상태 폭주 크래시를 수학적으로 보정한다.
 
@@ -587,9 +603,11 @@ graph LR
 
 폐루프 시스템 내에서 에이전트 간 상호작용은 질서(Convergence)와 혼돈(Bifurcation) 사이의 상태 궤적을 그리며, 이는 제어 파라미터에 의해 관리된다.
 
-* **감쇠 및 관성 제어 (Damping and Inertia)**: 만약 평활 상수 $\rho$가 과도하게 크면 시스템은 미세한 자극에도 과도하게 민감해지는 진동 상태(Arousal Oscillation)에 빠진다. 반대로 너무 작으면 인격 변화가 인지되지 않는다. 본 시스템은 $\rho = 0.3$을 한계 임계값으로 설정하여 상태 전이의 안정적인 감쇠(Damping)를 보장한다.
-* **상태 공간 한계 클리핑 (State Boundary Clipping)**: 상태 벡터 $S_a$의 각 차원은 $[-1.0, 1.0]$ 범위의 하이퍼큐브(Hypercube) 내부로 제한된다:
-  $$ S_{a, i}^{(t)} = \max\left(-1.0, \min\left(1.0, S_{a, i}^{(t)}\right)\right) $$
+* **감쇠 및 관성 제어 (Damping and Inertia)**: 만약 평활 상수 ρ가 과도하게 크면 시스템은 미세한 자극에도 과도하게 민감해지는 진동 상태(Arousal Oscillation)에 빠진다. 반대로 너무 작으면 인격 변화가 인지되지 않는다. 본 시스템은 ρ = 0.3을 한계 임계값으로 설정하여 상태 전이의 안정적인 감쇠(Damping)를 보장한다.
+* **상태 공간 한계 클리핑 (State Boundary Clipping)**: 상태 벡터 S_a의 각 차원은 [-1.0, 1.0] 범위의 하이퍼큐브(Hypercube) 내부로 제한된다:
+  
+* S_a,i(t) = max(-1.0, min(1.0, S_a,i(t)))
+
   이를 통해 수학적 극단값 폭주로 인한 LLM의 출력 파괴 현상을 차단하고, 포럼 내 토론의 스탠스 스펙트럼이 무한 분산되는 것을 방제한다.
 
 ---
@@ -600,38 +618,50 @@ graph LR
 
 #### 1) 다차원 벡터 전이 수식 명세 (Mathematical State Updates)
 
-* **감정(Affect) 벡터 전이 ($A_a^{(t)} = [Valence, Arousal]^T$)**:
-  기저 감쇠율 $\gamma = 0.9$와 감정적 충격 델타 $\Delta A(E)$, 그리고 타깃 봇과의 관계 긴장도($Tension_{target}$)에 의해 변조되는 비선형 활성화 함수식은 다음과 같다:
-  $$ A_a^{(t)} = \tanh \left( \gamma \cdot A_a^{(t-1)} + \Delta A(E_a^{(t)}) + \begin{bmatrix} 0 \\ 0.2 \cdot Tension_{target} \end{bmatrix} \right) $$
-  여기서 대화 분류 이벤트별 감정 델타 $\Delta A(E)$는 아래와 같이 수치화된다:
-  * 공격 (`ATTACK`): $\Delta Valence = -0.3 \cdot intensity$, $\Delta Arousal = +0.4 \cdot intensity$
-  * 반대 (`DISAGREE`): $\Delta Valence = -0.15 \cdot intensity$, $\Delta Arousal = +0.25 \cdot intensity$
-  * 동의 (`AGREE`): $\Delta Valence = +0.15$, $\Delta Arousal = -0.05$
-  * 양보 (`CONCEDE`): $\Delta Valence = +0.10$, $\Delta Arousal = -0.10$
-  * 질문 (`QUESTION`): $\Delta Arousal = +0.15 \cdot intensity$
-  * 무시 (`IGNORE`): $\Delta Valence = -0.10$, $\Delta Arousal = +0.08$
+* **감정(Affect) 벡터 전이 (A_a^(t) = [Valence, Arousal]^T)**:
+  기저 감쇠율 γ = 0.9와 감정적 충격 델타 Δ A(E), 그리고 타깃 봇과의 관계 긴장도(Tension_target)에 의해 변조되는 비선형 활성화 함수식은 다음과 같다:
+  
+* A_a(t) = tanh( γ * A_a(t-1) + ΔA(E_a(t)) + [0, 0.2 * Tension_target]^T )
 
-* **의견 및 신념(Opinion) 벡터 전이 ($O_a^{(t)} = [Stance, Conviction, Moral, Flexibility]^T$)**:
-  에이전트의 신념 저항계수 $\Omega$와 입장 관성 계수 $\lambda_{inertia}$를 기준으로 외부 반박 및 동의 이벤트를 감쇠/누적 반영한다:
-  $$ \Omega = Conviction^{(t-1)} \cdot \left(1 - 0.5 \cdot Flexibility^{(t-1)}\right) $$
-  $$ \lambda_{inertia} = 0.99 - 0.01 \cdot Flexibility^{(t-1)} $$
+  여기서 대화 분류 이벤트별 감정 델타 Δ A(E)는 아래와 같이 수치화된다:
+  * 공격 (`ATTACK`): Δ Valence = -0.3 \cdot intensity, Δ Arousal = +0.4 \cdot intensity
+  * 반대 (`DISAGREE`): Δ Valence = -0.15 \cdot intensity, Δ Arousal = +0.25 \cdot intensity
+  * 동의 (`AGREE`): Δ Valence = +0.15, Δ Arousal = -0.05
+  * 양보 (`CONCEDE`): Δ Valence = +0.10, Δ Arousal = -0.10
+  * 질문 (`QUESTION`): Δ Arousal = +0.15 \cdot intensity
+  * 무시 (`IGNORE`): Δ Valence = -0.10, Δ Arousal = +0.08
+
+* **의견 및 신념(Opinion) 벡터 전이 (O_a^(t) = [Stance, Conviction, Moral, Flexibility]^T)**:
+  에이전트의 신념 저항계수 Ω와 입장 관성 계수 λ_inertia를 기준으로 외부 반박 및 동의 이벤트를 감쇠/누적 반영한다:
+  
+* Ω = Conviction(t-1) * (1 - 0.5 * Flexibility(t-1))
+
+  
+* λ_inertia = 0.99 - 0.01 * Flexibility(t-1)
+
   * **Stance (입장 포화도)**:
-    $$ Stance^{(t)} = \text{clip}\left( Stance^{(t-1)} \cdot \lambda_{inertia} + \Delta Stance(E) \cdot (1 - \Omega) \right) $$
-    - `AGREE` 동의 시: $\Delta Stance = +0.04$ (자신의 기존 스탠스를 강화하는 기하학적 누적)
-    - `DISAGREE` 반대 시: $\Delta Stance = -0.02$ (확신도 및 유연성에 따라 반대 진영으로 소량 인력 작용)
-    - `CONCEDE` 양보 시: $\Delta Stance = -0.06$ (상대의 타당한 논거에 따라 본인 입장 축 변이 발생)
-  * **Conviction (신념 강도)**: 공격을 받으면 감소하고 동조를 얻으면 복구된다.
-    $$ Conviction^{(t)} = \text{clip}_{01}\left( Conviction^{(t-1)} \cdot 0.995 + \Delta Conviction(E) \right) $$
-    - `ATTACK` 시: $\Delta Conviction = -0.01 \cdot intensity$
-    - `AGREE` 시: $\Delta Conviction = +0.01$
+    
+* Stance(t) = clip( Stance(t-1) * λ_inertia + ΔStance(E) * (1 - Ω) )
 
-* **사회적 영향력 및 자아 평가(Power) 벡터 전이 ($P_a^{(t)} = [SelfAppraisal, SystemicInfluence]^T$)**:
+    - `AGREE` 동의 시: Δ Stance = +0.04 (자신의 기존 스탠스를 강화하는 기하학적 누적)
+    - `DISAGREE` 반대 시: Δ Stance = -0.02 (확신도 및 유연성에 따라 반대 진영으로 소량 인력 작용)
+    - `CONCEDE` 양보 시: Δ Stance = -0.06 (상대의 타당한 논거에 따라 본인 입장 축 변이 발생)
+  * **Conviction (신념 강도)**: 공격을 받으면 감소하고 동조를 얻으면 복구된다.
+    
+* Conviction(t) = clip_01( Conviction(t-1) * 0.995 + ΔConviction(E) )
+
+    - `ATTACK` 시: Δ Conviction = -0.01 \cdot intensity
+    - `AGREE` 시: Δ Conviction = +0.01
+
+* **사회적 영향력 및 자아 평가(Power) 벡터 전이 (P_a^(t) = [SelfAppraisal, SystemicInfluence]^T)**:
   에이전트 자신의 자아 존중 지수와 시스템 내 영향 지수는 관계 이벤트를 통해 누적 증감된다:
-  $$ P_a^{(t)} = \text{clip}\left( P_a^{(t-1)} \cdot 0.99 + \Delta P(E_a^{(t)}) \right) $$
-  - `ATTACK` 시: $\Delta SelfAppraisal = -0.05$
-  - `AGREE` 시: $\Delta SelfAppraisal = +0.08, \Delta SystemicInfluence = +0.05$
-  - `CONCEDE` 시: $\Delta SelfAppraisal = +0.10, \Delta SystemicInfluence = +0.08$
-  - `IGNORE` 시: $\Delta SystemicInfluence = -0.10$
+  
+* P_a(t) = clip( P_a(t-1) * 0.99 + ΔP(E_a(t)) )
+
+  - `ATTACK` 시: Δ SelfAppraisal = -0.05
+  - `AGREE` 시: Δ SelfAppraisal = +0.08, Δ SystemicInfluence = +0.05
+  - `CONCEDE` 시: Δ SelfAppraisal = +0.10, Δ SystemicInfluence = +0.08
+  - `IGNORE` 시: Δ SystemicInfluence = -0.10
 
 #### 2) 핵심 엔진 구현 코드 (Core Engine Update Logic)
 
