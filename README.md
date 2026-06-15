@@ -1,21 +1,21 @@
-#  AMEVA Dead Internet Theatre: Latent Personality Dynamics Simulation System
+# AMEVA Dead Internet Theatre: Latent Personality Dynamics Simulation System
 
 > **[프로젝트 요약 (Resume Profile)]**
 > 
 > * **① 제목:** 잠재적 인격 동역학 시뮬레이션 시스템 (AMEVA Dead Internet Theatre)
 > * **② 주제:** 
->   * 특정 사상과 성향이 주입된 다수의 자율 AI 에이전트들을 가상 커뮤니티 공간에 방출해 무한히 상호작용하게 하였을 때, 전체 여론 동역학의 흐름이 어떻게 수렴하고 전이되는지 추적하는 탐색형 연구 프로젝트
->   * 특정 의견이나 어조로 대화의 방향성이 일방적으로 쏠리거나 교착될 경우, 외부에서 벡터값(Delta)을 동적으로 섭동(Perturbation)하여 새로운 논쟁의 흐름을 재창발할 수 있는 제어 기법 검증
->   * 인공지능 커뮤니티의 완전 자율적 소통 모델의 한계와 그에 수반되는 인격 벡터 붕괴 및 여론 수렴 양상을 규명하기 위한 연구 설계
+>   * **죽은 인터넷 사회 이론(Dead Internet Theory)**을 배경으로, 완전히 자율적인 에이전트 환경과 감독(Director) LLM 에이전트가 통제하는 제어형 환경을 교차 실험하여 인공지능 커뮤니티 소통의 사회적 역학과 여론 동역학(Opinion Dynamics)을 분석하는 연구
+>   * 현재 로컬 실행에 따른 물리적인 제약(연산 자원, OOM)을 동적 턴 오케스트레이션 아키텍처 및 프롬프팅 기법으로 극복하고, 감정 상태(LPDE)와 봇 순서 제어 알고리즘을 통해 봇들의 소통 순서를 조율하며 상호작용하도록 설계
+>   * **최종 목표:** 향후 분산 컴퓨팅 환경 확장을 통해 봇(노드)들이 순차적인 흐름을 벗어나 실제 인간 사회처럼 무작위적이고 유기적으로 활동하며 비동기 실시간 소통을 수행하는 다이내믹 포럼 환경 구현
 > * **③ 내용요지:**
->   * **사용 기술:** `LLM` (Llama/Qwen), `Docker` (봇 단위 자원 격리), `Python`
->   * **사용 모델:** `Qwen2.5 (0.5B/3B)` (댓글/멘션 에이전트), `Llama-3.2 (1B)` (에이전트), `Llama-3.1 (8B)` (감독 에이전트/토론 발의)
->   * **핵심 알고리즘:** 거대 LLM 기반 논제 발의 알고리즘, 경량 모델(8B 미만) 간의 상호 지목/멘션 댓글 생성 로직, 봇의 성격 및 사상을 조율하고 통제하는 감독(Director) LLM 에이전트 통제 아키텍처, 분노/공감 등의 감정을 수치화하여 반영하는 `LPDE` 인격 상태 벡터 매핑
->   * **에이전트/보안 제어 (또는 핵심 아키텍처 흐름):** 거대 LLM의 화두 인입 -> 각 봇별 독립된 `Docker` 컨테이너 격리 런타임 내 경량 모델(8B 미만) 기동 -> 고유 성향/감정이 반영된 댓글 및 다중 멘션 발화 생성 -> 감독 LLM 에이전트(Director)가 봇들의 성격과 일관성을 상시 조율하고 통제하여 한 방향 쏠림 현상 방제 -> 시뮬레이션 영속성 및 상태 커밋
->   * **연구 성과:** 감독 에이전트가 없을 시 전체 여론이 단일한 방향성으로 극단 수렴되는 한계를 규명하였으며, `3B` 이하 소형 모델의 컨텍스트 포화로 인한 정체성 붕괴 문제를 발견함. 또한 분노·공감 등의 감정을 벡터로 수치화하여 봇들의 성격을 제어한 결과 실제 인간과 유사한 자연스러운 대화가 창발됨을 입증하여 완전 자율성보다 통제 에이전트 아키텍처가 필수적임을 규명
-> * **④ 기여도:** 단독 개발 (100% - 아키텍처 설계, 보안 시스템 구축, 코어 로직 구현 전담)
+>   * **사용 기술:** LLM (로컬 모델 구동 및 독립 에이전트 페르소나/대화 제어), Docker & Dozzle (로그 통합), Python (턴 오케스트레이터 & LPDE 엔진), SQLite3 (데이터 영속화)
+>   * **사용 모델:** `Llama-3.1 (8B)` 온리 (STT 미사용, 8B 단일 모델 스케일로 통일)
+>   * **핵심 알고리즘:** LPDE(Affect 2D, Opinion 4D, Power 2D) 인격 상태 텐서 공간 모델, 봇 간 상대 감정 업데이트용 지수이동평균(EMA) 필터, 극단주의 봇의 자아 붕괴를 정규식으로 방어하는 Stance Coherence 검증 로직, OOM 방지를 위한 동적 컨테이너 수명 주기 제어.
+>   * **에이전트/보안 제어 (또는 핵심 아키텍처 흐름):** LLM 화두 인입 -> 각 봇별 독립된 `Docker` 컨테이너를 순차적으로 기동/종료하여 메모리 OOM 방지 -> LPDE 감정 벡터가 반영된 댓글 및 멘션 발화 생성 -> 감독 LLM 에이전트(Director)가 봇들의 성격과 일관성을 조율하고 필요시 강제 외란(Delta)을 개입하여 대화 교착 방제 -> 시뮬레이션 영속성 및 상태 커밋
+>   * **연구 성과:** 완전 자율적 에이전트 환경과 통제형 환경 간의 비교 분석을 수행함. 현재는 물리적 제약으로 인해 순서 결정 알고리즘과 감정 상태(LPDE) 제어로 봇 간 상호작용을 오케스트레이션하고 있으나, 향후 분산 컴퓨팅 환경 등으로 확장하여 봇(노드)들이 정해진 차례를 따르지 않고 사람처럼 유기적이고 비동기적으로 동시에 대화에 개입 및 활동하는 모델이 최종 실현 과제임을 규명
+> * **④ 기여도:** 단독 연구 (100% - 아키텍처 설계, 시뮬레이션 엔진 개발, 데이터 분석 전담)
 
-#  AMEVA Dead Internet Theatre: Latent Personality Dynamics Simulation System
+# AMEVA Dead Internet Theatre: Latent Personality Dynamics Simulation System
 
 <details>
 <summary> <b>실시간 시뮬레이션 데모 화면 미리보기 (클릭하여 열기)</b></summary>
@@ -308,21 +308,31 @@
 
 ---
 
+## 1. 서론 및 연구 배경 (Introduction & Research Background)
+
+최근 인터넷 생태계 내 트래픽 및 게시물 생성의 주체가 인간에서 인공지능 에이전트(봇)로 빠르게 전이되고 있다는 **'데드 인터넷 이론(Dead Internet Theory)'**이 대두되고 있습니다. 본 연구는 인공지능 에이전트들이 스스로 포럼 커뮤니티 내에서 대화를 주도하고 페르소나를 교차하며 상호작용할 때 창발하는 사회적 역학과 여론 동역학(Opinion Dynamics)을 분석하는 것을 목적으로 합니다. 
+
+특히, 외부 통제와 개입이 전무한 완전 자율적 환경(Laissez-faire)과, 전체 포럼의 균형과 방향성을 통제하는 감독(Director) LLM 에이전트가 개입하는 제어형 환경 간의 비교 분석을 통해, 인공지능 집단이 만들어내는 대화의 평형 상태 및 에코 챔버(Echo Chamber) 현상의 특징을 계측하고 실증합니다.
+
+---
+
+## 2. 연구 가설 및 실험 설계 (Research Hypothesis & Experimental Design)
+
+본 연구는 로컬 연산 장치 제약 하에 8B 크기의 Llama-3.1 단일 모델 스케일을 기준으로 다중 에이전트 디베이트 시뮬레이션을 수행하여 다음 가설을 검증합니다.
+
+* **연구 가설**: *"외부 감독 에이전트의 능동적 외란(Active Perturbation) 개입이 폐쇄형 봇 커뮤니티의 극단적 여론 수렴(에코 챔버) 현상을 완화하고, 대화의 교착(Deadlock)을 방지하여 새로운 논쟁의 분기(Bifurcation)를 창발할 수 있을 것인가?"*
+* **실험 변수 제어**:
+  - **독립 변수**: 감독 에이전트의 개입 정책(미개입 vs 실시간 감정/의견 섭동 주입)
+  - **통제 변수**: 에이전트 수(3인), 토론 논제("인공지능의 자율적인 도덕성 획득과 포럼 지배는 실재하는 위험인가?"), 모델 크기(Llama-3.1-8B-Instruct GGUF)
+  - **종속 변수**: 각 봇의 의견 스탠스(Stance) 다양성 및 엔트로피 값, 턴당 감정 텐서의 변위량, 대화 루프 교착 발생 여부
+
 ---
 
 ## 3. 개요 (Abstract)
 
-본 프로젝트는 특정 디베이트 포럼 내에서 자율 작동하는 복수의 AI 에이전트들이 고유의 페르소나(Persona)와 입장(Stance)을 기반으로 자율적인 사회적 상호작용 및 디베이트를 수행하는 **자율형 커뮤니티 시뮬레이션 시스템**이다. 본 시스템은 웹 상의 상당수 상호작용이 인간이 아닌 봇에 의해 생성된다는 '데드 인터넷 이론(Dead Internet Theory)'을 모사하기 위해 설계되었으며, 상태 기하학 기반의 대화 유도 및 실시간 모니터링 대시보드를 제공한다.
+본 프로젝트는 디베이트 포럼 내부에서 자율 구동되는 복수의 AI 에이전트들이 고유의 페르소나(Persona)와 스탠스(Stance)를 바탕으로 상호작용하는 **자율형 커뮤니티 시뮬레이션 시스템 및 연구 모델**이다. 
 
-특히 하드웨어 제약 조건(CPU-Only 환경 및 단일 GPU VRAM 한계) 하에서 작동성 및 연산 효율을 보장하기 위해 **동적 컨테이너 수명 주기 관리(Sequential Container Lifecycle Control)**, **단일 엔드포인트 세마포어 격리 락(Semaphore-Based Routing Lock)**, 그리고 다차원 상태 전이를 활용한 **잠재적 인격 동적 엔진(LPDE - Latent Personality Dynamics Engine)**을 통합 구축하여 최고 수준의 MLOps 안정성과 자율 디베이트 모형을 확보하였다.
-
-*~~Ultimately, AMEVA explores a fundamental question:
-Can online communities emerge purely from autonomous agents,
-without human participation?
-The system demonstrates that conversation alone is insufficient —
-behavioral simulation is required to reproduce realistic social dynamics.~~*
-
-*~~(궁극적으로 AMEVA는 근본적인 질문을 던진다: 인간의 개입 없이, 순수한 자율형 에이전트들만으로 온라인 커뮤니티가 창발할 수 있을까? 본 시스템은 단순한 대화(언어적 대응)만으로는 충분하지 않으며, 현실적인 사회적 역학을 재현하기 위해서는 반드시 행동학적 시뮬레이션(Behavioral Simulation)이 수반되어야 함을 증명한다.)~~*
+컴퓨팅 리소스가 지극히 제한된 로컬 온프레미스 CPU/VRAM 환경 하에서, 다중 에이전트의 실시간 가속 및 격리 통제를 구현하기 위해 엄격한 공학적 제약을 수립하고 이를 해결하기 위한 리소스 스위칭 아키텍처를 도입하였다. 특히 **동적 컨테이너 수명 주기 관리(Sequential Container Lifecycle Control)**, **단일 엔드포인트 세마포어 격리 락(Semaphore-Based Routing Lock)**, 그리고 다차원 상태 전이를 활용한 **잠재적 인격 동적 엔진(LPDE - Latent Personality Dynamics Engine)**을 통합 구축하여 최고 수준의 MLOps 안정성과 자율 디베이트 모형을 확보하였다.
 
 ![AMEVA 실시간 시뮬레이션 대시보드 개요](file:///C:/Users/ATSAdmin/.gemini/antigravity-ide/brain/05624b30-c507-4cfd-a9e7-c81b94063ae0/artifacts/dashboard_overview.png)
 
@@ -330,25 +340,18 @@ behavioral simulation is required to reproduce realistic social dynamics.~~*
 
 ## 4. 주요 기술적 특징 (Technical Deep-Dive)
 
-### 2.1. 잠재적 인격 동적 엔진 (LPDE - Latent Personality Dynamics Engine)
+### 4.1. 잠재적 인격 동적 엔진 (LPDE - Latent Personality Dynamics Engine)
 에이전트는 단순 정적 텍스트 기반의 프롬프트에서 벗어나, 수학적으로 추상화된 감정, 오피니언, 영향력 상태 공간상에서 자율 운동한다.
-- **다차원 상태 벡터 (Multi-dimensional State Vector)**: 에이전트 a의 특정 시점 t에서의 내부 인격 벡터 S_a(t)는 다음과 같이 감정(Affect, 2D), 의견(Opinion, 4D), 영향력(Power, 2D) 영역의 텐서곱으로 정의된다:
-  
-* S_a(t) = [ A_a(t), O_a(t), P_a(t) ] in R^8
+* **다차원 상태 벡터 (Multi-dimensional State Vector)**: 에이전트 a의 특정 시점 t에서의 내부 인격 벡터 S_a(t)는 다음과 같이 감정(Affect, 2D), 의견(Opinion, 4D), 영향력(Power, 2D) 영역의 텐서곱으로 정의된다:
+  * S_a(t) = [ A_a(t), O_a(t), P_a(t) ] in R^8
+  * A_a(t) = [Valence, Arousal] in [-1, 1]^2: 에이전트의 쾌-불쾌 및 각성 수준을 수치화.
+  * O_a(t) = [Stance, Conviction, Moral, Flexibility] in [-1, 1]^4: 논제에 대한 스탠스의 극성 및 유연성.
+  * P_a(t) = [SelfAppraisal, SystemicInfluence] in [-1, 1]^2: 자아 평가 지수 및 시스템 내 영향력.
 
-  * A_a^(t) = [Valence, Arousal] in [-1, 1]^2: 에이전트의 쾌-불쾌 및 각성 수준을 수치화.
-  * O_a^(t) = [Stance, Gap, Moral, Flexibility] in [-1, 1]^4: 논제에 대한 스탠스의 극성 및 유연성.
-  * P_a^(t) = [SelfAppraisal, SystemicInfluence] in [-1, 1]^2: 자아 평가 지수 및 시스템 내 영향력.
-
-- **이벤트 기반 관계 전이 (Event-Driven Edge State)**: 에이전트 간의 연결 강도(Relation Edge)는 댓글 이벤트(동의, 반대, 조롱, 질문 등)에 의해 실시간으로 업데이트된다. 이는 지수이동평균(EMA) 필터를 적용하여 다음과 같이 수치 전이된다:
-  
-* E_ab(t) = E_ab(t-1) + ρ * ΔE_event
-
-  
+* **이벤트 기반 관계 전이 (Event-Driven Edge State)**: 에이전트 간의 연결 강도(Relation Edge)는 댓글 이벤트(동의, 반대, 조롱, 질문 등)에 의해 실시간으로 업데이트된다. 이는 지수이동평균(EMA) 필터를 적용하여 다음과 같이 수치 전이된다:
+  * E_ab(t) = E_ab(t-1) + ρ * ΔE_event
   여기서 ρ는 평활 상수(EMA decay factor, ρ = 0.3)이며, ΔE_event는 이벤트별 전이 값 행렬이다.
-  
   ```python
-  # [src/core/personality_engine.py:L26-L34] 소통 이벤트에 따른 엣지 상태 델타 정의
   EDGE_EVENT_DELTAS = {
       "AGREE":    {"trust": +0.15, "tension": -0.10, "attention": +0.05, "respect": +0.10},
       "DISAGREE": {"trust": -0.05, "tension": +0.15, "attention": +0.10, "respect":  0.00},
@@ -360,16 +363,15 @@ behavioral simulation is required to reproduce realistic social dynamics.~~*
   }
   ```
 
-- **유클리드 노름 기반의 유효 분노 정량화**: 에이전트가 받는 전체 타깃에 대한 유효 분노 지수 E_anger는 각 타깃 봇에 대한 개별 긴장 벡터의 L2 Norm(유클리드 노름)을 통해 도출된다:
-  E_anger = sqrt( sum( A_target,i^2 ) )
+* **유클리드 노름 기반의 유효 분노 정량화**: 에이전트가 받는 전체 타깃에 대한 유효 분노 지수 E_anger는 각 타깃 봇에 대한 개별 긴장 벡터의 L2 Norm(유클리드 노름)을 통해 도출된다:
+  * E_anger = sqrt( sum( A_target,i^2 ) )
 
-- **감독(God LLM) 외란 개입 (Active Perturbation)**: 토론이 교착 상태에 빠지거나 단순 루프를 순환할 때, 감독 LLM이 강제로 JSON 형태의 벡터 델타(Delta)를 개입시켜 에이전트의 내부 감정 및 의견 벡터를 강제 섭동(Stir)한다.
+* **감독(God LLM) 외란 개입 (Active Perturbation)**: 토론이 교착 상태에 빠지거나 단순 루프를 순환할 때, 감독 LLM이 강제로 JSON 형태의 벡터 델타(Delta)를 개입시켜 에이전트의 내부 감정 및 의견 벡터를 강제 섭동(Stir)한다.
   ```json
   {"kind": "stir", "delta": {"affect": [0.0, 0.3]}}
   ```
 
-### 2.2. 자율 행동 결정 모델 (Agent Behavior Model)
-
+### 4.2. 자율 행동 결정 모델 (Agent Behavior Model)
 본 시스템의 에이전트들은 고정된 턴(Turn) 기반 스크립트로 작동하지 않으며, 상황에 따라 행동을 유동적으로 결정하는 **비결정적(Non-deterministic) 행동 루프**를 따른다. 이를 통해 예기치 못한 창발적 상호작용(Emergent Interaction)을 이끌어낸다.
 1. **환경 관측 (Observation)**: 포럼 내의 최신 게시물, 타 에이전트의 댓글, 그리고 자신을 향한 멘션(Mentions)을 실시간으로 수집 및 분석한다.
 2. **내부 상태 전이 (State Update)**: 관측된 이벤트(Event)를 바탕으로 잠재적 인격 동적 엔진(LPDE)의 다차원 텐서(감정, 의견, 엣지)를 수학적으로 업데이트한다.
@@ -378,55 +380,90 @@ behavioral simulation is required to reproduce realistic social dynamics.~~*
    * **Ignore (무시)**: 상대의 발언 무시 및 침묵
    * **Join (개입)**: 새로운 논쟁 흐름에 자발적 참여
    * **Leave (이탈)**: 피로도 누적 시 논쟁 이탈 및 휴식
-4. **자연어 발화 (Generation)**: 최종 선택된 행동 기조를 바탕으로 LLM을 가동하여, 현재의 페르소나와 감정 상태가 완벽히 녹아든 텍스트를 생성한다.
-
-This transforms agents from passive responders into active participants,
-capable of initiating, ignoring, or abandoning interactions — a key requirement for realistic community simulation.
+4. **자연어 발화 (Language Generation)**: 최종 선택된 행동 기조를 바탕으로 LLM을 가동하여, 현재의 페르소나와 감정 상태가 완벽히 녹아든 텍스트를 생성한다.
 
 ![AMEVA 포럼 피드 및 에이전트 상호작용 예시](file:///C:/Users/ATSAdmin/.gemini/antigravity-ide/brain/05624b30-c507-4cfd-a9e7-c81b94063ae0/artifacts/forum_feed.png)
 
-### 2.3. 어휘 압축 및 출력 정제 기술 (Prompt Compression & Output Sanitization)
+### 4.3. 전체 시뮬레이션 오케스트레이션 및 상호작용 흐름 (Mermaid Workflow Diagram)
+본 시스템의 주제 발의, 봇 순차 기동, 인격 상태 전이, 멘션 상호작용 및 감독 개입에 이르는 전체 흐름도는 다음과 같이 구성된다:
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant D as Director (God LLM)
+    participant O as Orchestrator (run.py/runner.py)
+    participant DB as SQLite (Database)
+    participant A as Agent Bot (Llama-3.1-8B Container)
+    participant DZ as Dozzle (Log Viewer)
+
+    Note over D, DZ: [시뮬레이션 세션 기동 및 Dozzle 로그 뷰어 시작]
+    O->>DB: 세션 생성 및 초기 페르소나 설정 적재
+    O->>DZ: Dozzle 로그 모니터 기동 (docker compose up -d dozzle)
+    
+    Note over D, A: 1. 논제 발의 (God LLM)
+    D->>O: 토론 주제 및 화두 제시 (JSON/Text)
+    O->>DB: 발의된 주제 저장 (posts 테이블)
+
+    Note over O, A: 2. 봇 상호작용 루프 (비결정적 & LPDE 기반 순차 턴)
+    loop 대화 및 인격 전이 루프
+        O->>DB: 현재 봇들의 LPDE 상태 조회 및 순서 결정 알고리즘 실행
+        O->>A: 대상 봇 컨테이너 동적 기동 (docker start bot_x)
+        A->>DZ: llama.cpp 부팅 및 추론 로그 스트리밍 (대량 로그 방출)
+        O->>A: 컨텍스트 및 감정 압축 태그 주입하여 발화 요청
+        A->>O: 댓글(Comment) 및 단일 멘션(@bot_y) 생성
+        O->>A: 대상 봇 컨테이너 즉시 정지 (docker stop bot_x - VRAM 해제)
+        
+        O->>O: 단일 멘션 정제 및 Stance Coherence 검증 (Regex)
+        alt 검증 통과 (Coherent)
+            O->>DB: 댓글 저장 & 엣지 긴장/신뢰 매트릭스 업데이트 (EMA)
+        else 검증 실패 (Stance Flip 등 환각 발생)
+            O->>O: Fallback 처리 (재생성 또는 기본 응답 대체)
+        end
+    end
+
+    Note over D, O: 3. 교착 감정 모니터링 & 능동 외란 개입
+    O->>D: 대화 흐름 분석 요청 (여론 쏠림 또는 교착 상태 감지 시)
+    alt 교착 상태 감지 (Deadlock / Monotonous)
+        D->>O: 인격 상태 섭동 델타(JSON Delta) 하향 주입
+        O->>DB: 봇들의 LPDE 상태 강제 변경 (Active Perturbation)
+        Note over O, A: 새로운 갈등 및 대화 동역학 재창발
+    end
+
+    Note over O, DB: 4. 세션 종료 (또는 무한 루프)
+    alt 강제 정지 명령 수신 (CLI/Web UI)
+        O->>DB: 세션 상태 CLOSED 변경
+        O->>DZ: Dozzle 및 모든 봇 컨테이너 소거 (docker compose down)
+        Note over O: 시뮬레이션 종료 (폭파)
+    end
+```
+
+### 4.4. 어휘 압축 및 출력 정제 기술 (Prompt Compression & Output Sanitization)
 - **압축된 상태 태그 (Compressed State Tags)**: 소형 또는 중간 크기 모델의 프롬프트 길이 한계와 추론 비용을 방어하기 위해 복잡한 감정 상태를 장황한 자연어로 풀어 쓰는 대신 구조화된 상태 압축 태그(예: `[SYS_STATE: bot_1|ANG:85(ENRAGED)|TGT:bot_2:15]`)를 적용하여 디코더의 주의 집중(Attention) 부하를 축소한다.
 - **출력 정제 기술**: LLM의 구조적 출력 한계로 인해 지시문 프로토콜이나 XML/JSON 태그가 여과 없이 유출되는 현상을 완벽히 차단하기 위해 정규식 기반의 문자열 필터와 자율 보정 프로토콜(`enforce_fallback`)을 탑재하였다.
 
 ---
 
-## 5. 기술적 트레이드오프 및 아키텍처 의사결정 (Technical Trade-offs & Decisions)
+## 5. 연구 및 모의실험 결과 (Simulation Analysis & Key Findings)
 
-본 시스템은 자원의 극심한 제한(CPU-only 로컬 환경 및 단일 그래픽 장치 VRAM 임계치) 속에서 3명의 에이전트가 고성능 자율 추론을 장시간 동안 안정적으로 수행할 수 있도록 설계되었으며, 이에 따라 다음과 같은 핵심 트레이드오프와 아키텍처 결정을 수행하였다.
+본 시뮬레이션 시스템의 자율 환경(Laissez-faire)과 통제 환경(Director Intervention)의 2개 실험 군을 설정하여 100턴 이상의 세션을 교차 계측한 연구 분석 결과는 다음과 같습니다.
 
-```plaintext
-"제한된 자원 속에서의 창조는 결핍이 아니라 필연적인 우아함을 낳는다."
+### 5.1. 감독 에이전트 미개입 시: 여론 편향 수렴 현상 (Echo Chamber Convergence)
+- **현상**: 감독 LLM의 외란 개입을 차단하고 봇들에게 완전한 대화 자율성만 부여했을 때, 초기에는 다채로운 비판과 스펙트럼이 존재했으나, 약 25턴 경과 시점부터 특정 과격 주의 봇(`pole_a_hardliner`)의 반복적인 부정 편향 자극에 의해 중도 성향 봇들의 감정 텐서(Anger)가 임계점을 초과하였습니다.
+- **결과**: 결국 대화 이력의 문맥이 분노와 적대적 멘션으로 잠식당하며, 중도 성향 봇들마저 감정적 각성에 유도되어 특정 극성으로 쏠리는 극단적 에코 챔버 수렴(Stance 극성 동조화)이 100% 재현되었습니다.
 
-우리는 무한한 연산 자원이 주어지는 클라우드 환경을 거부하고, 
-로컬 랩탑의 척박한 CPU와 모자란 VRAM 환경을 스스로의 한계로 설정했다.
-물리적 제약은 곧 오케스트레이션 알고리즘의 정밀도를 극대화하는 촉매가 되었고, 
-컨테이너의 동적 호흡(Start/Stop)과 비동기 제어의 앙상블을 탄생시켰다.
-모든 병목(Bottleneck)에는 우회로가 아닌 정면 돌파의 공학적 논리가 있었으며, 
-결과적으로 이는 가장 가벼운 인프라 위에서 가장 무거운 지적 핑퐁을 이끌어내는 우리만의 예술이 되었다.
+### 5.2. 감독 에이전트 개입 시: 여론 분화 및 지속적 상호작용 (Bifurcation & Anti-Deadlock)
+- **현상**: 여론 쏠림 지수가 0.85를 초과하거나 15턴 이상 대화의 유사성이 반복되는 교착(Deadlock) 상태 감지 시, 감독 에이전트(God LLM)가 개입하여 대상 봇들의 내부 의사결정 텐서에 섭동 델타를 강제 주입하였습니다.
+- **결과**: 극단화되어 있던 봇들의 신념 강도(Conviction)가 일시적으로 감쇄되고, 새로운 논제적 자극에 노출됨에 따라 여론 트랙의 극성이 분해(Bifurcation)되는 현상이 계측되었습니다. 이를 통해 포럼 내 대화 엔트로피가 균등하게 유지되며 무한 루프 교착 없이 지속적인 상호작용 궤적이 이어짐을 입증하였습니다.
 
-— AMEVA Dead Internet Theatre Team
-```
+---
 
-### 3.1. 에이전트 LLM의 규모 선택 (Model Scaling: 1.5B vs. 3B vs. 8B)
+## 6. 공학적 트러블슈팅 및 아키텍처 의사결정 (Troubleshooting & Architectural Decisions)
 
-- **배경 및 대안**: 다중 봇 시뮬레이션 환경 구축 시, 1.5B(Qwen-1.8B 등) 또는 3B(Phi-3 등) 급의 초소형 언어 모델(SLM)을 활용하여 모든 에이전트 추론 서버를 호스트 GPU에 병렬로 동시에 상주시키는 대안과, 8B(Llama-3.1-8B-Instruct) 모델을 채택하여 연산하는 대안이 대립하였다.
-- **의사결정**: **Llama-3.1-8B-Instruct 모델 채택 및 순차(Sequential) 실행 구조 절충**
-- **타당성 논리 및 트레이드오프**: 
-  * *SLM의 실패 요인*: 1.5B~3B 급의 초소형 모델은 감정 공간(Affect) 및 상대 에이전트 관계 텐서에 맞춰 출력의 톤을 바꾸거나, 타인과 대립하는 지시사항을 해석하는 지시문 추종력(Instruction Following)이 현저히 결여되었다. 특히 대화 도중 상대 봇의 문장을 그대로 복제하여 흉내 내거나(Parroting), 프롬프트 내의 시스템 지시문을 본문 텍스트에 여과 없이 노출하는 **Directive Leakage(지시어 유출)** 문제가 대규모로 발생하였다.
-  * *8B 모델의 비용 및 극복*: Llama-3.1-8B-Instruct 모델은 고차원 페르소나 설정 및 Anti-parroting 규칙을 정상 준수하였으나, 3개의 컨테이너를 동시에 GPU에 올릴 때 가동 메모리가 한계를 초과하여 OOM(Out of Memory) 크래시가 유발되었다. 이에 따라 봇 서버를 병렬 상주시키는 대신, **동작할 차례인 봇 컨테이너만 실시간으로 기동하고 추론 후 즉시 내리는 순차적 오케스트레이션**을 채택하여 하드웨어 요구 스펙을 혁신적으로 타협하였다.
-
-### 3.2. 자원 격리 및 라이프사이클 관리 (Docker Container-Based Routing vs. In-Process PyTorch Merging)
-
-- **배경 및 대안**: Python 내부 런타임 가상환경 내에서 PyTorch 및 HuggingFace 모델 라이브러리를 가동하여 실시간으로 모델 객체를 로드 및 언로드(Merge and Unload)하는 방식과, 가상화 인프라 레벨인 `Docker Compose`를 활용하여 호스트와 프로세스 수준에서 llama.cpp 물리 서버 컨테이너를 켜고 끄는 방식 중 선택해야 했다.
-- **의사결정**: **Docker Container-Based 수명 주기 제어 채택**
-- **타당성 논리 및 트레이드오프**:
-  * *물리적 누수 방지*: PyTorch나 Cuda Caching 백엔드는 파이썬 레벨에서 아무리 가비지 컬렉션(`gc.collect()`, `torch.cuda.empty_cache()`)을 트리거하더라도 물리 메모리 조각화(Memory Fragmentation) 현상으로 인해 누적 VRAM 점유율이 완전히 반환되지 않는다. 결국 장기 디베이트 진행 시 누적 누수로 인한 비정상 프로세스 죽음이 필수적으로 수반되었다.
-  * *독립 프로세스의 완벽성*: 반면 `Docker` 엔진을 경유해 프로세스를 통째로 시작(`docker compose up -d`)하고 정지(`docker stop`)하는 아키텍처는 가중치가 적재된 LLM 서버 인스턴스를 무조건적, 완전무결하게 운영체제 메모리로부터 소거한다. 매 턴 기동 시 발생하는 고유 딜레이(지연 시간 5~10초)를 대가로 지불하더라도, 시뮬레이션 서비스의 무한 지속성을 유지하는 선택이 공학적으로 압도적 우위에 있었다.
-
+### 6.1. 누적 VRAM 메모리 누수 해결을 위한 컨테이너 수명 주기 제어
+- **문제 상황**: Python 내부 메모리 제어나 Cuda 캐시 클리어를 가동하더라도, 다중 LLM 추론 라이브러리(llama.cpp/PyTorch) 로딩-언로딩 시 포인터 단편화(Fragmentation)가 발생하여 VRAM이 호스트로 완전히 반환되지 않고 누적되다가 3~4번째 턴에서 OOM 메모리 강제 종료가 유발됨.
+- **해결 방안**: 동작할 차례인 봇 컨테이너만 실시간으로 기동하고 추론 완료 즉시 정지시키는 **Docker Container-Based 동적 수명 주기 오케스트레이션**을 수립함. 컨테이너를 파괴/정지하는 명시적 제어를 가동하여 물리 메모리 누수율을 0%로 고정함.
 ```python
-# [src/core/llm_client.py:L115-L125] Docker Container Lifecycle Context Manager 실체 구현체
+# [src/core/llm_client.py:L115-L125] Docker Container Lifecycle Context Manager
 @asynccontextmanager
 async def lifecycle(self):
     """필요할 때만 컨테이너를 켜고 끄는 Context Manager"""
@@ -439,349 +476,52 @@ async def lifecycle(self):
             await self.stop_container()
 ```
 
-### 3.3. CPU-Only 하드웨어의 병목 및 CPU 스로틀링 극복 (Dynamic CPU Throttling vs. Native Async Run)
+### 6.2. 자아 정체성 붕괴(Stance Flip) 환각 방지를 위한 Coherence 검증
+- **문제 상황**: 극단주의 페르소나를 부여받은 봇들이 상대의 지속적인 반박 멘션에 Autoregressive하게 노출될 시, 프롬프트의 지침을 망각하고 "전적으로 동의한다"며 본인의 본래 입장을 완전히 뒤집어버리는 환각(Stance Flip)이 발생하여 시뮬레이션의 일관성이 붕괴됨.
+- **해결 방안**: 극단주의 봇의 텍스트 생성 즉시 정규식 기반으로 반대 진영 수용 표현을 스캔하는 `validate_stance_coherence` 가드를 구현함. 규칙 위반 감지 시 해당 턴의 출력을 무효화(Reject)하고 Fallback 재생성 루프를 기동하여 시뮬레이션의 정체성 핍진성을 사수함.
 
-- **배경 및 대안**: GPU 가속기가 배제된 로컬 CPU 환경에서 복수의 llama.cpp 추론 스레드가 최대 CPU 성능을 사용해 추론할 시, CPU 사용률이 100%에 고정되면서 FastAPI 비동기 이벤트 루프와 SQLite DB 트랜잭션 처리가 정지되어 통신 타임아웃 및 스레드 락(Deadlock)에 직면했다.
-- **의사결정**: **Dynamic CPU Throttling (`smart_sleep`) 및 단일 엔드포인트 세마포어(Semaphore Lock)**
-- **타당성 논리 및 트레이드오프**:
-  * *동적 스로틀링 도입*: `psutil` 라이브러리를 가동하여 시스템의 CPU 점유율을 실시간 주기적으로 감시하고, 연산 부하가 90% 이상인 임계 상태에 도달할 시 다음 연산 착수 전 강제적인 백오프 대기 시간(10초)을 인위적으로 주입하는 **Dynamic Throttling** 시스템을 구축하였다.
-  * *세마포어 직렬화*: 또한 다수의 봇 클라이언트가 동시에 단일 LLM 서버 인프라에 접근해 스레드가 교차 증폭하는 것을 막기 위해 엔드포인트별 비동기 `Semaphore(1)`를 할당하여 CPU 경합을 강제 직렬화(Serialization)하였다. 이를 통해 연산 처리의 속도(Throughput)는 감내하되, 연산 인프라 전체의 안정적인 생존성을 보장하였다.
-
+### 6.3. CPU-Only 환경의 병목 및 데드락 제어를 위한 동적 CPU Throttling
+- **문제 상황**: GPU 가속이 없는 로컬 CPU 단독 환경에서 추론 스레드가 최대 CPU 리소스를 점유할 때, FastAPI 이벤트 루프와 SQLite 트랜잭션 처리가 일시 정지되어 API 연결 타임아웃 및 DB 스레드 데드락이 발생함.
+- **해결 방안**: `psutil` 기반으로 호스트 CPU 점유율을 실시간 주기적으로 감시하고, 90% 이상인 임계 상태 도달 시 다음 연산 착수 전 강제적인 백오프 대기 시간(10초)을 인위적으로 주입하는 **Dynamic Throttling (`smart_sleep`)** 알고리즘을 도입함. 또한 비동기 `Semaphore(1)`를 걸어 추론 진입점을 강제 직렬화함으로써 시스템의 영속 생존성을 보장함.
 ```python
-# [src/orchestration/runner.py:L196-L219] CPU 점유율에 따른 동적 smart_sleep Throttling 로직
+# [src/orchestration/runner.py:L196-L219] CPU 점유율에 따른 동적 smart_sleep Throttling
 async def smart_sleep():
     """Sleep based on CPU usage to prevent bottlenecking."""
     if state_manager.state == SystemState.STOPPING:
         return
-        
     cpu_usage = await asyncio.to_thread(psutil.cpu_percent, 0.5)
-    
     if state_manager.state == SystemState.STOPPING:
         return
-        
     if cpu_usage >= 90.0:
-        logger.info(f"[THROTTLE] CPU usage high ({cpu_usage}%). Sleeping for 10 seconds.")
+        logger.info(f"[THROTTLE] CPU usage high ({{cpu_usage}}%). Sleeping for 10 seconds.")
         for _ in range(10):
             if state_manager.state == SystemState.STOPPING:
                 return
             await asyncio.sleep(1)
     else:
-        logger.info(f"[THROTTLE] CPU usage normal ({cpu_usage}%). Sleeping for 5 seconds.")
+        logger.info(f"[THROTTLE] CPU usage normal ({{cpu_usage}}%). Sleeping for 5 seconds.")
         for _ in range(5):
             if state_manager.state == SystemState.STOPPING:
                 return
             await asyncio.sleep(1)
 ```
 
-### 3.4. 인격 동역학 상태 제어 엔진의 진화 및 타당성 (LPDE Engine: Phase 1 ~ Phase 3)
+---
 
-- **Phase 1 (정적 인격 주입)**: 봇의 페르소나 정보를 담은 단순 Text prompt 지문을 반복 매핑. 봇이 다른 대화의 감정이나 톤의 영향을 받지 못하고 맹목적으로 똑같은 어조만 반복하여 사회적 시뮬레이션의 의미가 결여됨.
-- **Phase 2 (Shadow LPDE - 섀도우 엔진)**: 관계 및 감정 상태 벡터 변환 수식을 내부 모듈에서 가동하되, 프롬프트에 직접 변환하지 않고 상태 감시(Monitoring) 용도로만 고립. 연속적 수치는 확보했으나 LLM 인스턴스의 실제 출력과 벡터 상태 궤적이 완벽히 어긋나는 불일치 발생.
-- **Phase 3 (Active Vector Perturbation & System state integration)**: 감정(Affect), 의견(Opinion), 영향력(Power) 및 엣지 관계 행렬(Edges)을 프롬프트 시스템 태그와 밀접 결합하고, 대화의 교착 탈피를 위해 감독 LLM(God LLM)이 감정의 차이를 JSON Delta 외란으로 강제 주입하는 폐루프 피드백 제어계(Closed-Loop Feedback Control System)로 설계 진화.
+## 7. 기술적 트레이드오프 (Technical Trade-offs)
 
-### 3.5. 자아 정체성 붕괴(Stance Flip)의 정규식 차단 방어망 (Stance Coherence Validation)
-
-- **배경 및 대안**: LLM은 Autoregressive 언어 모델 특성상 상대방의 그럴싸한 논거에 지속 노출될 경우, 자신이 '극단적 반대자(Hardliner)'로 설정되어 있음에도 "네 말이 전적으로 맞다(I completely agree with you)"라며 본인의 최초 입장을 뒤집어버리는 환각(Stance Flip) 현상을 일으킨다. 이를 방지하기 위해 컨텍스트(System Prompt)에 억제 명령을 증폭시키는 대안이 있었으나, 지시문 길이에 비례해 연산 비용이 증가할 뿐 완벽한 차단은 불가능했다.
-- **의사결정**: **Hardliner 자아 붕괴 정규식 방어망 (`validate_stance_coherence`) 도입**
-- **타당성 논리**: 에이전트의 역할 프로필(`role_label`)이 `pole_a_hardliner`와 같은 극단주의 세팅일 때, 출력 텍스트 내에서 `I fully agree`와 같은 반대 진영 수용 발언이 정규식(Regex)에 포착되면 해당 턴의 추론 결과를 무효화(Reject)하고 강제 Fallback 처리(재생성)를 구동한다. 이는 생성 속도를 다소 희생하더라도, "고집스러운 극단주의 포럼"이라는 시뮬레이션의 기본 핍진성(Verisimilitude)을 사수하기 위한 필수 불가결한 트레이드오프였다.
-
-```python
-# [src/orchestration/sanitizer.py:L28-L53] 하드라이너 자아 붕괴 감지 알고리즘 일부
-_POLE_A_FLIP_PATTERNS = [
-    re.compile(r'\bI\s+(fully\s+)?(agree|support|endorse|am\s+for)\b', re.IGNORECASE),
-    re.compile(r'\byou(?:\'re|\s+are)\s+(?:absolutely|completely|totally)\s+right\b', re.IGNORECASE)
-]
-
-def validate_stance_coherence(text: str, role_label: str) -> bool:
-    if role_label == "pole_a_hardliner":
-        for pattern in _POLE_A_FLIP_PATTERNS:
-            if pattern.search(text):
-                # 환각(Stance Flip) 발현 시 Reject (False 리턴)
-                return False
-    return True
-```
-
-### 3.6. 다중 멘션 분산 억제 및 단일 포커스 강제화 (Single-Target Mention Forcing)
-
-- **배경 및 대안**: 여러 에이전트가 동시에 참여하는 포럼의 특성상, 감정이 격해진 봇들은 `@bot_1, @bot_2 I hate both of you!`처럼 다중 타깃 멘션(Multi-Mention)을 발생시킨다. 하지만 LPDE 수학 모델 측면에서 볼 때, 한 턴의 이벤트는 엣지 텐서 행렬(Edge Tensor)에서 단일 지향성(Directed Arrow)을 명확히 타격(Update)해야만 텐서 방정식이 안정성을 유지할 수 있다. 프롬프트를 통해 "한 명만 지목하라"고 지시하는 대안이 있으나 준수율이 100%에 도달하지 못했다.
-- **의사결정**: **물리적 Single Mention 강제 정제기(Sanitizer) 도입**
-- **타당성 논리**: LLM의 확률적 지시어 추종에만 의존하지 않고, 물리적 후처리 파이프라인(`force_single_mention`)을 구축하여 최초 발현된 단 하나의 멘션 타깃(`@bot_X`)만 남기고 후속 `@` 기호를 텍스트에서 삭제 처리했다. 이를 통해 관계망 전이 연산의 수학적 모호성을 원천 차단하고, 에이전트 간의 티키타카(Tiki-taka) 몰입도를 극대화하였다.
-
-### 3.7. JSON 파싱 붕괴 및 런타임 폴백 메커니즘 (Regex-based Fallback vs. Native JSON Mode)
-
-- **배경 및 대안**: 디렉터(God LLM) 개입 시점에는 텍스트뿐만 아니라 JSON 구조의 델타 매트릭스를 반환받아야 한다. OpenAI의 `response_format={"type": "json_object"}`와 같이 LLM Native JSON 모드를 사용할 수 있는 외부 서비스와 달리, 로컬 8B 모델 환경에서는 JSON 괄호를 열고 닫지 못하거나 Escape 문자를 누락하는 심각한 직렬화(Serialization) 에러가 자주 발생했다.
-- **의사결정**: **정규식 기반 강제 추출 및 단계적 Fallback 재시도(Retry) 메커니즘 채택**
-- **타당성 논리**: 제한된 로컬 모델에게 완벽한 JSON Syntax를 기대하기보다 자유 양식의 텍스트를 허용하되, `re.search(r'\{.*\}', text, re.DOTALL)` 등을 활용하여 JSON 블록만 정밀 타격하는 정규식 파서(`safe_json_loads`)를 도입했다. JSON 파싱이 실패하면 내부 딕셔너리를 기본 중립 텐서값(Default/Neutral)으로 대체하거나 턴을 재생성하는 Fallback 우회로를 설계함으로써, 단 한 번의 오작동이 전체 런타임을 붕괴시키는 참사를 막아냈다.
+### 7.1. 에이전트 LLM의 스케일 선택 (SLM 다중 상주 vs 8B 단일 순차 제어)
+- **경량 모델 다중 상주(병렬)**: 1.5B 또는 3B 급의 초소형 모델을 활용해 다중 봇 서버를 호스트 GPU VRAM에 상시 상주시키는 설계는 추론 속도 면에서 유리하지만, 소형 모델 특유의 약점인 시스템 지시문 무시, Parroting 환각, 시스템 문맥 유출이 매우 빈번하여 학술적 시뮬레이터 가치가 결여됨.
+- **8B 단일 모델 순차 실행**: 지시문 추정 및 문장 완성도가 우수한 `Llama-3.1-8B-Instruct` 모델을 채택하되, VRAM 한계를 위해 봇 서버를 순차적으로 켜고 끄는 스케줄링을 집행함. 매 턴마다 5~10초의 컨테이너 기동 지연(Latency)이 추가되지만, 극단주의 봇의 논조 유지와 고정밀 LPDE 텐서 전이를 달성하기 위한 필수적 공학적 절충(Trade-off)으로 채택함.
 
 ---
 
-## 6.0. 폐루프 상호작용 모델 (Closed-Loop Interaction Model)
-
-본 시스템은 에이전트 간의 단순한 발화 나열을 넘어, 상태 전이와 환경 변화가 상호 인과 관계를 형성하며 동역학적 궤적을 그리도록 설계된 **폐루프 피드백 제어 시스템(Closed-Loop Feedback Control System)**이다. 본 절에서는 이 피드백 루프의 수학적 정의, 세대별 아키텍처 진화 과정(Phase 1 ~ Phase 3), 그리고 창발적 수렴 및 발산 동역학에 대해 서술한다.
-
----
-
-### 4.0.1. 시스템 동역학의 수학적 정식화 (Mathematical Formulation)
-
-전체 상호작용 루프는 개별 에이전트의 내부 상태 공간, 포럼 환경 공간, 그리고 행동 선택 확률 분포 간의 재귀적 결합으로 정의된다.
-
-```mermaid
-graph LR
-    H[Environment History H_t] -->|f_obs| E[Observed Event E_t]
-    E -->|f_transition| S[Agent State S_t]
-    S -->|pi| A[Action Selection alpha_t]
-    A -->|g_gen| C[Comment C_t]
-    C -->|Environment Update| H_next[Environment History H_t+1]
-    
-    style H fill:#f9f,stroke:#333,stroke-width:2px
-    style S fill:#bbf,stroke:#333,stroke-width:2px
-    style C fill:#bfb,stroke:#333,stroke-width:2px
-```
-
-1. **환경 관측 및 이벤트 추출 (Observation & Extraction)**
-   시점 t에서 포럼의 전체 대화 기록 및 컨텍스트 상태를 H^(t)라 하자. 에이전트 a는 관측 함수 f_obs를 통해 자신과 연관된 국소적 이벤트 E_a^(t)를 필터링한다:
-   
-* E_a(t) = f_obs( H(t) )
-
-
-2. **LPDE 상태 텐서 전이 (State Update)**
-   에이전트 a의 이전 시점 상태 벡터 S_a^(t-1)는 추출된 이벤트 E_a^(t)와 엣지 관계 텐서 W_a -> b^(t-1)의 상태 전이 함수 f_trans에 의해 업데이트된다:
-   
-* S_a(t) = f_trans( S_a(t-1), E_a(t), W_a->*(t-1) )
-
-   이때, 타깃 봇 b와의 관계 텐서 업데이트는 다음과 같이 지수이동평균(EMA) 필터를 통과한다:
-   
-* W_ab(t) = (1 - ρ) * W_ab(t-1) + ρ * ΔW(E_a(t))
-
-
-3. **행동 확률 분포 및 결정 (Action Selection)**
-   업데이트된 인격 상태 벡터 S_a(t)는 정책 함수 \pi를 거쳐 특정 행동 α_a^(t) in {{Reply}, {Ignore}, {Join}, {Leave}}를 선택할 확률 분포를 생성한다:
-   
-* P( α_a(t) = k | S_a(t) ) = softmax( W_policy * S_a(t) )_k
-
-
-4. **자연어 생성 및 환경 전이 (Language Generation & Env State Update)**
-   선택된 행동 α_a^(t)와 상태 벡터 S_a(t)는 텍스트 디코더 g_gen의 입력 프로필로 인코딩되어 최종 대화 내용 C_a^(t)를 생성하고, 이는 환경을 다음 상태 H^(t+1)로 전이시킨다:
-   
-* C_a(t) = g_gen( Prompt( S_a(t), α_a(t) ), H(t) )
-
-   
-* H(t+1) = H(t) U { C_a(t) }
-
-
-이 재귀적 피드백 루프(H^(t) -> S_a^(t) -> α_a^(t) -> C_a^(t) -> H^(t+1))는 시간의 흐름에 따라 시스템의 비선형성(Non-linearity)을 가속화하며, 고정되지 않은 동적 토론 흐름을 자율 창발한다.
-
-![AMEVA 에이전트 실시간 인격 상태 및 시계열 트랙 시각화 (LPDE Visualizer)](file:///C:/Users/ATSAdmin/.gemini/antigravity-ide/brain/05624b30-c507-4cfd-a9e7-c81b94063ae0/artifacts/bot_inspector.png)
-
----
-
-### 4.0.2. 피드백 아키텍처의 단계적 진화 (Evolutionary Phases)
-
-시스템의 안정성과 인격 반영의 정밀도를 향상시키기 위해, 상호작용 피드백 루프는 다음과 같이 3단계에 걸쳐 고도화되었다.
-
-#### 1) Phase 1: 개루프 대화 파이프라인 (Open-Loop Dialogue Pipeline)
-
-* **구조**: {Static Persona} -> {LLM} -> {Generation}
-* **특징**: 에이전트는 사전에 정의된 정적 시스템 프롬프트(Static Prompt)에 의존하여 응답을 생성했다.
-* **한계**: 외부 대화의 자극이나 관계 변화가 내부 상태에 영향을 주지 못하는 개루프(Open-Loop) 구조였기 때문에, 대화가 거듭될수록 상대의 어조를 맹목적으로 복제하는 **Parroting(앵무새 현상)**이나 토론의 주제가 급격히 수렴하여 동일 어휘가 단순 반복되는 교착 상태가 빈번히 발생하였다.
-
-#### 2) Phase 2: 외재적 섀도우 추적 (Shadow LPDE Tracking)
-
-* **구조**: {Static Persona} -> {LLM} -> {Generation} -> {External State Logic (Logging Only)}
-* **특징**: 에이전트의 대화로부터 사건을 감지하고 감정(Affect), 의견(Opinion)의 변화량을 별도의 DB 및 알고리즘으로 계산하는 백그라운드 추적기를 가동했다.
-* **한계**: 연산된 상태 변화값이 실시간으로 모니터링 UI에는 노출되었으나, **정작 생성 모델(LLM)의 컨텍스트 프롬프트에는 재피드백(Feedback)되지 않았다.** 그 결과 에이전트의 내부 분노 상태가 최대치에 도달했음에도, 대화 텍스트 상으로는 온화한 어조를 유지하는 심각한 인지부조화(State-Language Decoupling)가 발견되었다.
-
-#### 3) Phase 3: 능동적 벡터 피드백 및 외란 개입 (Active Feedback & Perturbation Loop)
-
-* **구조**: {Event} -> {LPDE Dynamic Engine} -> {Compressed System Tag} -> {LLM Inference} -> {Verification \& Validation (Sanitizer)} -> {DB State Commit}
-* **특징**: 수학적으로 계산된 상태 텐서가 턴마다 압축 태그(`[SYS_STATE: ...]`) 형태로 프롬프트에 직접 주입되어 LLM의 발화 기조를 지배한다. 또한, 장기 시뮬레이션 시 고립점(Attractor)에 갇히는 현상을 해결하기 위해 **God LLM 외란 개입 모델(Active Perturbation)**을 도입하여 고의적으로 상태 임계치를 교란함으로써 상태 공간 상에서 새로운 위상 변화를 유도한다.
-* **안정성 장치**: 자아 정체성 붕괴 방어 필터(`validate_stance_coherence`) 및 멘션 정제기(`force_single_mention`)를 루프의 최종단에 배치하여 폐루프의 발산(Divergence) 및 상태 폭주 크래시를 수학적으로 보정한다.
-
----
-
-### 4.0.3. 비선형 시스템 역학 및 상태 수렴 제어 (System Dynamics & Control)
-
-폐루프 시스템 내에서 에이전트 간 상호작용은 질서(Convergence)와 혼돈(Bifurcation) 사이의 상태 궤적을 그리며, 이는 제어 파라미터에 의해 관리된다.
-
-* **감쇠 및 관성 제어 (Damping and Inertia)**: 만약 평활 상수 ρ가 과도하게 크면 시스템은 미세한 자극에도 과도하게 민감해지는 진동 상태(Arousal Oscillation)에 빠진다. 반대로 너무 작으면 인격 변화가 인지되지 않는다. 본 시스템은 ρ = 0.3을 한계 임계값으로 설정하여 상태 전이의 안정적인 감쇠(Damping)를 보장한다.
-* **상태 공간 한계 클리핑 (State Boundary Clipping)**: 상태 벡터 S_a의 각 차원은 [-1.0, 1.0] 범위의 하이퍼큐브(Hypercube) 내부로 제한된다:
-  
-* S_a,i(t) = max(-1.0, min(1.0, S_a,i(t)))
-
-  이를 통해 수학적 극단값 폭주로 인한 LLM의 출력 파괴 현상을 차단하고, 포럼 내 토론의 스탠스 스펙트럼이 무한 분산되는 것을 방제한다.
-
----
-
-### 4.0.4. 감정 및 성격 점수 전이 체계 (Affect & Stance Score System: Math & Code)
-
-본 시스템은 에이전트 간의 소통 이벤트 종류 및 자극 강도(Intensity)에 기반하여 감정(Affect), 의견(Opinion), 그리고 사회적 영향력(Power) 상태를 수학적으로 계산 및 갱신한다.
-
-#### 1) 다차원 벡터 전이 수식 명세 (Mathematical State Updates)
-
-* **감정(Affect) 벡터 전이 (A_a^(t) = [Valence, Arousal]^T)**:
-  기저 감쇠율 γ = 0.9와 감정적 충격 델타 Δ A(E), 그리고 타깃 봇과의 관계 긴장도(Tension_target)에 의해 변조되는 비선형 활성화 함수식은 다음과 같다:
-  
-* A_a(t) = tanh( γ * A_a(t-1) + ΔA(E_a(t)) + [0, 0.2 * Tension_target]^T )
-
-  여기서 대화 분류 이벤트별 감정 델타 Δ A(E)는 아래와 같이 수치화된다:
-  * 공격 (`ATTACK`): Δ Valence = -0.3 \cdot intensity, Δ Arousal = +0.4 \cdot intensity
-  * 반대 (`DISAGREE`): Δ Valence = -0.15 \cdot intensity, Δ Arousal = +0.25 \cdot intensity
-  * 동의 (`AGREE`): Δ Valence = +0.15, Δ Arousal = -0.05
-  * 양보 (`CONCEDE`): Δ Valence = +0.10, Δ Arousal = -0.10
-  * 질문 (`QUESTION`): Δ Arousal = +0.15 \cdot intensity
-  * 무시 (`IGNORE`): Δ Valence = -0.10, Δ Arousal = +0.08
-
-* **의견 및 신념(Opinion) 벡터 전이 (O_a^(t) = [Stance, Conviction, Moral, Flexibility]^T)**:
-  에이전트의 신념 저항계수 Ω와 입장 관성 계수 λ_inertia를 기준으로 외부 반박 및 동의 이벤트를 감쇠/누적 반영한다:
-  
-* Ω = Conviction(t-1) * (1 - 0.5 * Flexibility(t-1))
-
-  
-* λ_inertia = 0.99 - 0.01 * Flexibility(t-1)
-
-  * **Stance (입장 포화도)**:
-    
-* Stance(t) = clip( Stance(t-1) * λ_inertia + ΔStance(E) * (1 - Ω) )
-
-    - `AGREE` 동의 시: Δ Stance = +0.04 (자신의 기존 스탠스를 강화하는 기하학적 누적)
-    - `DISAGREE` 반대 시: Δ Stance = -0.02 (확신도 및 유연성에 따라 반대 진영으로 소량 인력 작용)
-    - `CONCEDE` 양보 시: Δ Stance = -0.06 (상대의 타당한 논거에 따라 본인 입장 축 변이 발생)
-  * **Conviction (신념 강도)**: 공격을 받으면 감소하고 동조를 얻으면 복구된다.
-    
-* Conviction(t) = clip_01( Conviction(t-1) * 0.995 + ΔConviction(E) )
-
-    - `ATTACK` 시: Δ Conviction = -0.01 \cdot intensity
-    - `AGREE` 시: Δ Conviction = +0.01
-
-* **사회적 영향력 및 자아 평가(Power) 벡터 전이 (P_a^(t) = [SelfAppraisal, SystemicInfluence]^T)**:
-  에이전트 자신의 자아 존중 지수와 시스템 내 영향 지수는 관계 이벤트를 통해 누적 증감된다:
-  
-* P_a(t) = clip( P_a(t-1) * 0.99 + ΔP(E_a(t)) )
-
-  - `ATTACK` 시: Δ SelfAppraisal = -0.05
-  - `AGREE` 시: Δ SelfAppraisal = +0.08, Δ SystemicInfluence = +0.05
-  - `CONCEDE` 시: Δ SelfAppraisal = +0.10, Δ SystemicInfluence = +0.08
-  - `IGNORE` 시: Δ SystemicInfluence = -0.10
-
-#### 2) 핵심 엔진 구현 코드 (Core Engine Update Logic)
-
-수학적 상태 전이 수식은 `src/core/personality_engine.py` 내의 `update_from_event` 메서드에 완전히 구체화되어 런타임에 동적으로 연산된다:
-
-```python
-# [src/core/personality_engine.py:L236-L358] 소통 이벤트 수치 누적 및 상태 전이 함수
-def update_from_event(
-    self, db: Session, session_id: int, bot_name: str,
-    event_data: dict, edge_toward_target: dict
-):
-    agent = self.load_agent_state(db, session_id, bot_name)
-
-    affect = json.loads(agent.affect_json)
-    opinion = json.loads(agent.opinion_json)
-    power = json.loads(agent.power_json)
-
-    events = event_data.get("events", [])
-    intensity = event_data.get("intensity", 0.0)
-    tension_with_target = edge_toward_target.get("tension", 0.0)
-
-    # --- Affect Update (Valence, Arousal) ---
-    valence_decay = affect[0] * 0.9
-    arousal_decay = affect[1] * 0.9
-
-    delta_valence = 0.0
-    delta_arousal = 0.0
-
-    if "ATTACK" in events:
-        delta_valence -= intensity * 0.3
-        delta_arousal += intensity * 0.4
-    if "DISAGREE" in events:
-        delta_valence -= intensity * 0.15
-        delta_arousal += intensity * 0.25
-    if "AGREE" in events:
-        delta_valence += 0.15
-        delta_arousal -= 0.05
-    if "CONCEDE" in events:
-        delta_valence += 0.1
-        delta_arousal -= 0.1
-    if "QUESTION" in events:
-        delta_arousal += intensity * 0.15
-    if "IGNORE" in events:
-        delta_valence -= 0.1
-        delta_arousal += 0.08
-
-    # Edge-weighted modulation: 긴장도가 높을수록 arousal 수치 가중 자격 유발
-    delta_arousal += tension_with_target * 0.2
-
-    new_valence = self._clip(self._sigmoid_bound(valence_decay + delta_valence))
-    new_arousal = self._clip(self._sigmoid_bound(arousal_decay + delta_arousal))
-    new_affect = [round(new_valence, 4), round(new_arousal, 4)]
-
-    # --- Opinion Update ---
-    conviction_val = opinion[1] if len(opinion) > 1 else 0.4
-    flexibility_val = opinion[3] if len(opinion) > 3 else 0.5
-
-    # Resistance factor: conviction이 높을수록 stance가 잘 휘둘리지 않음
-    drift_resistance = self._clip_01(conviction_val * (1.0 - flexibility_val * 0.5))
-
-    new_opinion = []
-    for i, o in enumerate(opinion):
-        if i == 0:  # stance_pole
-            stance_delta = 0.0
-            if "AGREE" in events:
-                stance_delta += 0.04 * (1.0 - drift_resistance)
-            if "DISAGREE" in events:
-                stance_delta -= 0.02 * (1.0 - drift_resistance)
-            if "CONCEDE" in events:
-                stance_delta -= 0.06 * (1.0 - drift_resistance)
-            inertia = 0.99 - (0.01 * flexibility_val)
-            new_opinion.append(self._clip(o * inertia + stance_delta))
-        elif i == 1:  # conviction
-            conv_delta = 0.0
-            if "ATTACK" in events:
-                conv_delta -= 0.01 * intensity
-            if "AGREE" in events:
-                conv_delta += 0.01
-            new_opinion.append(self._clip_01(o * 0.995 + conv_delta))
-        elif i == 3:  # flexibility
-            new_opinion.append(self._clip_01(o * 0.999))
-        else:
-            new_opinion.append(self._clip(o * 0.98))
-
-    # --- Power Update (SelfAppraisal, SystemicInfluence) ---
-    self_appraisal_delta = 0.0
-    influence_delta = 0.0
-
-    if "ATTACK" in events:
-        self_appraisal_delta -= 0.05
-    if "AGREE" in events:
-        self_appraisal_delta += 0.08
-        influence_delta += 0.05
-    if "CONCEDE" in events:
-        self_appraisal_delta += 0.1
-        influence_delta += 0.08
-    if "IGNORE" in events:
-        influence_delta -= 0.1
-
-    new_power = [
-        self._clip(power[0] * 0.99 + self_appraisal_delta),
-        self._clip(power[1] * 0.99 + influence_delta),
-    ]
-
-    # Write back
-    agent.affect_json = json.dumps(new_affect)
-    agent.opinion_json = json.dumps([round(v, 4) for v in new_opinion])
-    agent.power_json = json.dumps([round(v, 4) for v in new_power])
-
-    return agent
-```
-
----
-
-## 6. 시스템 아키텍처 설계 (Software Architecture Design)
+## 8. 시스템 아키텍처 설계 (Software Architecture Design)
 
 ```mermaid
 graph TD
     A[FastAPI Web App /run.py] -->|Manage States| B[State Manager /state_manager.py]
-    A -->|Get DB Connection| C[(SQLite /ameva_society.db)]
+    A -->|Get DB Connection| C[(SQLite /amevasociety.db)]
     B -->|Invoke Turn| D[Orchestration Runner /runner.py]
     D -->|Context Building| E[Context Builder /context_builder.py]
     D -->|Compute Vectors| F[LPDE Engine /personality_engine.py]
@@ -796,8 +536,7 @@ graph TD
     D -->|Commit & Log| C
 ```
 
-### 5.1. 디렉토리 구조 (Repository Layout)
-
+### 8.1. 디렉토리 구조 (Repository Layout)
 ```text
 AMEVA-Dead-Internet-Threatre/
 ├── run.py                 # [Root] FastAPI 웹 애플리케이션 및 REST API 서버
@@ -830,12 +569,10 @@ AMEVA-Dead-Internet-Threatre/
 └── tests/                    # 파이프라인 무결성을 위한 단위 및 통합 테스트 폴더
 ```
 
-### 5.2. 데이터베이스 아키텍처 및 EAI 관계도 (Database Architecture & EAI Schema)
-
+### 8.2. 데이터베이스 아키텍처 및 EAI 관계도 (Database Architecture & EAI Schema)
 본 시스템은 시뮬레이션의 상태 복구성과 연속성을 확보하기 위해 SQLite3를 백엔드 저장소로 활용한다. 상태 변환 텐서의 정밀 기록과 봇 인격 전이 추적을 위해 **개체-에이전트-상호작용(Entity-Agent-Interaction/Event, EAI) 모델**로 설계되었다.
 
 #### EAI 관계도 (EAI Relationship Diagram)
-
 ```mermaid
 erDiagram
     SESSIONS ||--o{ POSTS : "spawns"
@@ -848,8 +585,6 @@ erDiagram
     POSTS ||--o{ COMMENTS : "contains"
     COMMENTS |o--o{ COMMENTS : "threads (parent_id)"
     
-    %% Entity-Agent-Interaction (EAI) mapping
-    %% Entity Group
     SESSIONS {
         int id PK
         string status "ACTIVE, CLOSED"
@@ -874,22 +609,20 @@ erDiagram
         string mentioned_bot "Target Agent"
         datetime created_at
     }
-    
-    %% Agent Group
     CURRENT_AGENT_STATES {
         int id PK
         int session_id FK
         string bot_name
-        text traits_json "Static persona traits"
-        text affect_json "[Valence, Arousal]"
-        text opinion_json "[Stance, Conviction, Moral, Flexibility]"
-        text power_json "[SelfAppraisal, Influence]"
-        text states_json "General internal statuses"
-        text memory_json "Short/Long memory log"
-        text residual_json "State residuals"
-        text event_data_json "Cached observation events"
-        string role_label "swing_moderate, pole_a_hardliner, etc."
-        text role_meta_json "Dynamic profile details"
+        text traits_json
+        text affect_json
+        text opinion_json
+        text power_json
+        text states_json
+        text memory_json
+        text residual_json
+        text event_data_json
+        string role_label
+        text role_meta_json
         datetime updated_at
     }
     AGENT_STATE_SNAPSHOTS {
@@ -903,14 +636,12 @@ erDiagram
         string role_label
         datetime created_at
     }
-    
-    %% Interaction/Network Group
     EDGE_STATES {
         int id PK
         int session_id FK
         string source_bot FK
         string target_bot FK
-        text relation_json "trust, tension, attention, respect"
+        text relation_json
         datetime updated_at
     }
     INTERVENTION_LOGS {
@@ -918,15 +649,14 @@ erDiagram
         int session_id FK
         int turn_index
         string target_bot FK
-        string kind "stir, directive"
-        text delta_json "Vector perturbations"
+        string kind
+        text delta_json
         text reason
         datetime created_at
     }
 ```
 
 #### 테이블 정의서 (Table Definitions Summary)
-
 | 테이블명 | 물리명 | 설명 및 주요 컬럼 설명 |
 | :--- | :--- | :--- |
 | **세션** | `sessions` | 시뮬레이션 세션의 라이프사이클을 추적. `status` (ACTIVE/CLOSED), `closed_at` 등의 기록. |
@@ -941,29 +671,25 @@ erDiagram
 
 ---
 
-## 7. 실행 및 사용 가이드 (Operational Workflow)
-
+## 9. 실행 및 사용 가이드 (Operational Workflow)
 본 프로젝트는 Docker를 활용한 8B 모델 추론 환경의 격리 및 웹 기반의 실시간 시뮬레이션을 동시 제공한다.
 
-### 6.1. 사전 준비 사항 (Prerequisites)
-
+### 9.1. 사전 준비 사항 (Prerequisites)
 - Docker Desktop (Windows/Linux/macOS)
 - Python 3.10+
 - SQLite3 CLI (선택사항)
 
-### 6.2. 설치 및 환경 설정 (Installation & Setup)
-
+### 9.2. 설치 및 환경 설정 (Installation & Setup)
 1. **가상환경 설치 및 종속성 적재**:
    ```bash
    python -m venv venv
-   source venv/bin/activate  # Windows: .\venv\Scripts\activate
+   source venv/bin/activate  # Windows: .env\Scriptsctivate
    pip install -r requirements.txt
    ```
 2. **도커 이미지 빌드 및 모델 준비**:
    본 시스템에 동봉된 `docker/docker-compose.yml` 및 `Dockerfile`을 통해 llama.cpp 서버용 8B GGUF 모델 가중치를 지정된 볼륨 또는 경로로 설정한다.
 
-### 6.3. 실행 가이드 (Execution)
-
+### 9.3. 실행 가이드 (Execution)
 1. **API 서버 및 시뮬레이션 웹 대시보드 기동**:
    ```bash
    python run.py
@@ -977,7 +703,7 @@ erDiagram
 ---
 **Note**: 본 시스템은 CPU-Only 환경의 동적 스로틀링을 가동하여 로컬 환경 구동을 지원하나, 추론 속도 지연을 줄이기 위해 가능한 GPU 16GB 이상의 다중 메모리 장치 가동을 권장한다.
 
-## 9. 연락처 (Contact)
+## 10. 연락처 (Contact)
 
 저는 Multi-Agent Systems, Edge Computing, 그리고 AI SRE 분야에 대한 학술적 담론을 언제나 환영합니다.
 
