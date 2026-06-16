@@ -532,6 +532,103 @@ def normalize_post_content(text: str) -> str:
         logger.warning(f"[POST WARNING] Failed to normalize post content: {e}")
         return ""
 
+def parse_post_robustly(result: str, default_title: str) -> tuple[str, str]:
+    title = default_title
+    post_content = ""
+    
+    if not result:
+        return title, post_content
+        
+    result = result.strip()
+    json_str = None
+    
+    # Extract JSON block
+    markdown_match = re.search(r"```(?:json)?\s*(.*?)\s*```", result, re.DOTALL)
+    if markdown_match:
+        json_str = markdown_match.group(1).strip()
+    else:
+        start_idx = result.find("{")
+        end_idx = result.rfind("}")
+        if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
+            json_str = result[start_idx:end_idx + 1]
+            
+    if not json_str:
+        json_str = result
+
+    # Try standard json loads first
+    try:
+        data = json.loads(json_str)
+        title = data.get("title", title).strip()
+        post_content = data.get("content", "").strip()
+        return title, post_content
+    except json.JSONDecodeError:
+        pass
+        
+    # If standard parse fails, let's clean common issues
+    # Issue 1: Double double-quotes, like ""text""
+    # Let's try to repair the json_str
+    repaired_str = json_str
+    repaired_str = re.sub(r':\s*""', ': "', repaired_str)
+    repaired_str = re.sub(r'""\s*,', '",', repaired_str)
+    repaired_str = re.sub(r'""\s*\}', '"}', repaired_str)
+    
+    try:
+        data = json.loads(repaired_str)
+        title = data.get("title", title).strip()
+        post_content = data.get("content", "").strip()
+        return title, post_content
+    except json.JSONDecodeError:
+        pass
+
+    # Fallback to robust custom parsing of keys
+    def extract_field(key_name, text):
+        key_pattern = rf'["\']?{key_name}["\']?\s*:\s*'
+        match = re.search(key_pattern, text, re.IGNORECASE)
+        if not match:
+            return None
+        
+        start_pos = match.end()
+        val_text = text[start_pos:].lstrip()
+        if val_text.startswith('""'):
+            val_text = val_text[2:]
+        elif val_text.startswith('"'):
+            val_text = val_text[1:]
+        elif val_text.startswith("'"):
+            val_text = val_text[1:]
+            
+        boundaries = []
+        for other_key in ["title", "content"]:
+            if other_key.lower() != key_name.lower():
+                other_match = re.search(rf'["\']?{other_key}["\']?\s*:\s*', val_text, re.IGNORECASE)
+                if other_match:
+                    boundaries.append(other_match.start())
+                    
+        r_brace_pos = val_text.rfind('}')
+        if r_brace_pos != -1:
+            boundaries.append(r_brace_pos)
+            
+        if boundaries:
+            end_pos = min(boundaries)
+            val_extracted = val_text[:end_pos].rstrip()
+            val_extracted = val_extracted.rstrip(',').strip()
+            if val_extracted.endswith('""'):
+                val_extracted = val_extracted[:-2]
+            elif val_extracted.endswith('"') or val_extracted.endswith("'"):
+                val_extracted = val_extracted[:-1]
+            return val_extracted.strip()
+            
+        return val_text.strip()
+
+    t = extract_field("title", json_str)
+    c = extract_field("content", json_str)
+    
+    if t is not None:
+        title = t
+    if c is not None:
+        post_content = c
+        
+    return title, post_content
+
 async def create_post_with_main_llm(ctx: SessionContext, db, session):
     logger.info("[ROUTING] Requesting llm-main (8B) to generate a new topic...")
 
@@ -558,36 +655,7 @@ async def create_post_with_main_llm(ctx: SessionContext, db, session):
             
             # JSON 파싱 시도
             if result:
-                result = result.strip()
-                json_str = None
-                markdown_match = re.search(r"```(?:json)?\s*(.*?)\s*```", result, re.DOTALL)
-                if markdown_match:
-                    json_str = markdown_match.group(1).strip()
-                else:
-                    start_idx = result.find("{")
-                    end_idx = result.rfind("}")
-                    if start_idx != -1 and end_idx != -1 and end_idx > start_idx:
-                        json_str = result[start_idx:end_idx + 1]
-                
-                if json_str:
-                    try:
-                        data = json.loads(json_str)
-                        title = data.get("title", title).strip()
-                        post_content = data.get("content", "").strip()
-                    except json.JSONDecodeError as e:
-                        logger.error(f"[LLM-MAIN] JSON 디코딩 실패. Raw: {result} | Error: {e}")
-                        # Robust Regex fallback
-                        title_match = re.search(r'["\']?title["\']?\s*:\s*["\']((?:[^"\'\\]|\\.)*)["\']', json_str, re.DOTALL | re.IGNORECASE)
-                        content_match = re.search(r'["\']?content["\']?\s*:\s*["\']((?:[^"\'\\]|\\.)*)["\']', json_str, re.DOTALL | re.IGNORECASE)
-                        if title_match: title = title_match.group(1).replace('\\"', '"').replace("\\'", "'").replace('\\n', '\n').strip()
-                        if content_match: post_content = content_match.group(1).replace('\\"', '"').replace("\\'", "'").replace('\\n', '\n').strip()
-                else:
-                    logger.error(f"[LLM-MAIN] JSON 블록을 찾지 못했습니다. Raw: {result}")
-                    # Robust Regex fallback on raw result
-                    title_match = re.search(r'["\']?title["\']?\s*:\s*["\']((?:[^"\'\\]|\\.)*)["\']', result, re.DOTALL | re.IGNORECASE)
-                    content_match = re.search(r'["\']?content["\']?\s*:\s*["\']((?:[^"\'\\]|\\.)*)["\']', result, re.DOTALL | re.IGNORECASE)
-                    if title_match: title = title_match.group(1).replace('\\"', '"').replace("\\'", "'").replace('\\n', '\n').strip()
-                    if content_match: post_content = content_match.group(1).replace('\\"', '"').replace("\\'", "'").replace('\\n', '\n').strip()
+                title, post_content = parse_post_robustly(result, title)
     except Exception as e:
         logger.error(f"[LLM-MAIN] Error generating topic: {e}")
 
