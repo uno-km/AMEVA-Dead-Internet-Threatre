@@ -224,5 +224,21 @@ def force_single_mention(text: str, current_bot: str) -> tuple[str, str]:
 
 def enforce_fallback(text: str, current_bot: str) -> str:
     if not text or not text.strip():
-        raise RuntimeError(f"[LLM-BOT] {current_bot} 생성 실패 (결과값 없음).")
+        fallbacks = [
+            "I think you're avoiding the main issue. Can you clarify your point?",
+            "That seems to miss the core point. Can you explain further?",
+            "The argument is getting a bit muddy. What is your actual stance?",
+            "You need to provide clearer evidence for that claim.",
+            "There seems to be a missing piece in your reasoning right now.",
+            "Are you deliberately ignoring the obvious implications?",
+            "I strongly disagree with that logic. Could you try explaining it another way?",
+            "This isn't convincing at all. Provide a better rationale.",
+            "You're repeating the same weak point. Can we move on?",
+            "Let's refocus the discussion. What exactly are you trying to prove?",
+            "Your argument lacks substance. Do you have any real facts to support it?"
+        ]
+        chosen_reply = random.choice(fallbacks)
+        candidates = [b for b in ["bot_1", "bot_2", "bot_3"] if b != current_bot]
+        chosen_bot = random.choice(candidates) if candidates else "bot_1"
+        return f"{chosen_reply} @{chosen_bot}"
     return text
