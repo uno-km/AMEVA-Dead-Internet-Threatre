@@ -25,3 +25,7 @@ data/*.log
 # Downloaded models
 models/
 *.gguf
+
+# SQLite temporary files
+*.db-shm
+*.db-wal
