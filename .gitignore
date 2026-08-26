@@ -29,3 +29,15 @@ models/
 # SQLite temporary files
 *.db-shm
 *.db-wal
+
+.env
+.env.*
+*.env
+*.env.*
+.env.local
+.env.prd
+.env.dev
+.env.docker
+secrets/
+*.pem
+*.key
